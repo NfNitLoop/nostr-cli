@@ -1,0 +1,15 @@
+{
+  "tasks": {
+    "dev": "deno run --check --allow-net --watch main.ts",
+    "nt": "deno run --check --allow-net nt.ts"
+  },
+  "imports": {
+    "@std/async": "jsr:@std/async@^0.219.1",
+    "@std/encoding": "jsr:@std/encoding@^0.219.1",
+    "@cliffy/command": "https://deno.land/x/cliffy@v1.0.0-rc.3/command/mod.ts",
+    "@nostr/tools": "jsr:@nostr/tools",
+    "@ryu/enogu": "jsr:@ryu/enogu",
+    "cliffy/": "https://deno.land/x/cliffy@v1.0.0-rc.3/",
+    "zod": "npm:zod@^3.22.4"
+  }
+}

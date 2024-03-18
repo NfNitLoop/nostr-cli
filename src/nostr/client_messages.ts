@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Timestamp } from "./nostr.ts";
+import { PubKey } from "./nostr.ts";
 
 export type Event = z.infer<typeof Event>
 export const Event = z.tuple([
@@ -23,11 +24,12 @@ export const EventID = z.string().min(1)
 export type Filter = z.infer<typeof Filter>
 export const Filter = z.object({
     ids: z.array(EventID).optional(),
-    // author
+    authors: PubKey.array().optional(),
     kinds: z.number().int().array().optional(),
     since: Timestamp.optional(),
     until: Timestamp.optional(),
     limit: z.number().int().nonnegative().optional(),
+    "#t": z.string().min(1).array().optional(),
 })
 
 export type Req = z.infer<typeof Req>
@@ -38,4 +40,15 @@ export const Req = z.tuple([
 ]).rest(Filter)
 
 
-export type Request = Req // TODO: | Event | Close
+export type Close = z.infer<typeof Close>
+export const Close = z.tuple([
+    z.literal("CLOSE"),
+    SubscriptionID,
+])
+
+export type Message = z.infer<typeof Message>
+export const Message = z.union([
+    Req,
+    Close,
+    // TODO: Event,
+])
