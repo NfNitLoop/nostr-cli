@@ -72,7 +72,7 @@ export class EventObj {
             `pub:  ${ntools.nip19.npubEncode(this.pubkey)} ${gray(this.pubkey)}`,
             `sig:  ${this.sig}`,
             `created_at: ${this.created_at} (${this.humanDate})`,
-            `tags: ${JSON.stringify(this.tags,null, 4)}`,
+            `tags: \n${this.tags?.map(t => JSON.stringify(t)).join("\n")}`,
         ].join("\n")
     }
 
