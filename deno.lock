@@ -2,6 +2,7 @@
   "version": "3",
   "packages": {
     "specifiers": {
+      "jsr:@nick/dispose": "jsr:@nick/dispose@1.1.0",
       "jsr:@nostr/tools": "jsr:@nostr/tools@2.3.1",
       "jsr:@ryu/enogu": "jsr:@ryu/enogu@0.3.1",
       "jsr:@std/assert@^0.219.1": "jsr:@std/assert@0.219.1",
@@ -14,6 +15,9 @@
       "npm:zod@^3.22.4": "npm:zod@3.22.4"
     },
     "jsr": {
+      "@nick/dispose@1.1.0": {
+        "integrity": "73a15b90cb48e1435801258ba3ac7a19382823349dedcacbb8e5b5b673ce9d17"
+      },
       "@nostr/tools@2.3.1": {
         "integrity": "af01dc45cb28784c584d7a0699707196f397bcc53946efa582a01b11ddde4d61",
         "dependencies": [

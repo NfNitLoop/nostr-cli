@@ -3,10 +3,14 @@ import * as cli from "./client_messages.ts"
 import * as server from "./server_messages.ts"
 import * as nostr from "./nostr.ts"
 
-type TODO = unknown
+
+import { DisposableStack as DS } from "jsr:@nick/dispose";
+
 
 export type Listener = {
-    gotMessage?(message: TODO, client: Client): void,
+    gotMessage?(message: server.Message, client: Client): void
+    connectionClosed?(): void
+    sentMessage?(message: cli.Message): void
 }
 
 export type ClientOpts = {
@@ -28,6 +32,22 @@ export class Client {
         ws.addEventListener("close", () => this.#remoteClosed())
         ws.addEventListener("error", (e) => this.#errorMsg(e))
         ws.addEventListener("message", (e) => this.#onMessage(e))
+    }
+
+    withDebugLogging(): Client {
+        const url = this.url
+        this.#listeners.push({
+            gotMessage(message) {
+                console.debug("->", url, message)
+            },
+            sentMessage(message) {
+              console.debug("<-", url, message)
+            },
+            connectionClosed() {
+                console.debug("Connection closed:", url)
+            }
+        })
+        return this
     }
 
     #ws: WebSocket
@@ -53,6 +73,7 @@ export class Client {
 
 
 
+    // TODO: Generator version of this query. 
     /** Do a one-time query, collect results, and stop streaming. */
     async query(filter: cli.Filter): Promise<nostr.Event[]> {
         using sub = this.#newSub()
@@ -77,12 +98,17 @@ export class Client {
         if (c.readyState != wsState.OPEN) {
             throw new Error(`readyState ${c.readyState} for ${this.url}`)
         }
-        c.send(JSON.stringify(r))
+        const json = JSON.stringify(r)
+        c.send(json)
+        this.#toListeners(l => l.sentMessage?.(r))
     }
 
     /** Update all listeners */
     #toListeners(fn: (l: Listener) => unknown): void {
-        for (const l of this.#listeners) {
+        // Copy, in case listeners modify the list of listeners:
+        const listeners = [...this.#listeners]
+
+        for (const l of listeners) {
             try {
                 fn(l)
             } catch (err: unknown) {
@@ -92,7 +118,9 @@ export class Client {
     }
 
     #remoteClosed() {
-        console.log("Remote closed connection.")
+        this.#toListeners(l => {
+            l.connectionClosed?.()
+        })
     }
 
 
@@ -101,7 +129,8 @@ export class Client {
         console.warn("Error on web socket", this.url, e)
     }
 
-    async #onMessage(e: MessageEvent) {
+    // deno-lint-ignore require-await
+    async #onMessage(e: MessageEvent): Promise<void> {
 
         const json = JSON.parse(e.data)
         let message: server.Message
@@ -148,14 +177,41 @@ export class Client {
         await closed.promise
     }
 
-    async awaitOpen() {
-        if (!this.#ws) {
-            throw new Error(`Not yet connected to ${this.url}`)
+    async publish(event: nostr.Event) {
+        const okMessage = new Future<server.OK>()
+
+        const listener = {
+            gotMessage: (m: server.Message) => {
+                if (m[0] != "OK") { return }
+                
+                okMessage.resolve(m)
+            },
+            connectionClosed: () => {
+                okMessage.reject(new Error(`Connection closed: ${this.url}`))
+            },
         }
 
-        const opened = Promise.withResolvers()
-        this.#ws.addEventListener("open", () => opened.resolve(null), {once: true})
-        await opened.promise
+        this.#listeners.push(listener)
+        using ds = new DS()
+        ds.defer(() => {
+            this.#listeners = this.#listeners.filter(it => it != listener)
+        })
+
+        this.#send(["EVENT", event])
+        const [_type, _id, isOk, detail] = await okMessage.promise
+
+        if (isOk) {
+            return
+        }
+
+        // Despite NIP-01 showing that duplicates should be `true`, the very first server I tried here 
+        // returns `false`. D'oh. 
+        if (detail?.startsWith("duplicate:")) {
+            // TODO: Maybe return that this was a duplicate?
+            return
+        }
+            
+        throw new Error(`Server error when publishing message: ${detail}`)
     }
 }
 

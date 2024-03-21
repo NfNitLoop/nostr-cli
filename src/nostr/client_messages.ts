@@ -1,12 +1,9 @@
 import { z } from "zod";
 import { Timestamp } from "./nostr.ts";
 import { PubKey } from "./nostr.ts";
+import * as nostr from "./nostr.ts"
 
-export type Event = z.infer<typeof Event>
-export const Event = z.tuple([
-    z.literal("EVENT"),
-    z.object({}), // TODO event type.
-])
+
 
 
 export type SubscriptionID = z.infer<typeof SubscriptionID>
@@ -46,9 +43,15 @@ export const Close = z.tuple([
     SubscriptionID,
 ])
 
+export type Event = z.infer<typeof Event>
+export const Event = z.tuple([
+    z.literal("EVENT"),
+    nostr.Event,
+])
+
 export type Message = z.infer<typeof Message>
 export const Message = z.union([
     Req,
     Close,
-    // TODO: Event,
+    Event,
 ])
