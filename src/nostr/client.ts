@@ -2,9 +2,12 @@ import { delay } from "@std/async";
 import * as cli from "./client_messages.ts"
 import * as server from "./server_messages.ts"
 import * as nostr from "./nostr.ts"
+import { blue } from "jsr:@std/fmt/colors"
 
 
 import { DisposableStack as DS } from "jsr:@nick/dispose";
+import { Future } from "../future.ts";
+import { Channel } from "../channel.ts";
 
 
 export type Listener = {
@@ -29,7 +32,7 @@ export class Client {
     private constructor(readonly url: string, opts: ClientOpts, ws: WebSocket) {
         this.#listeners = opts?.listeners ?? []
         this.#ws = ws
-        ws.addEventListener("close", () => this.#remoteClosed())
+        ws.addEventListener("close", () => this.#onClosed())
         ws.addEventListener("error", (e) => this.#errorMsg(e))
         ws.addEventListener("message", (e) => this.#onMessage(e))
     }
@@ -38,10 +41,10 @@ export class Client {
         const url = this.url
         this.#listeners.push({
             gotMessage(message) {
-                console.debug("->", url, message)
+                console.debug(blue("<-"), url, JSON.stringify(message))
             },
             sentMessage(message) {
-              console.debug("<-", url, message)
+              console.debug(blue("->"), url, JSON.stringify(message))
             },
             connectionClosed() {
                 console.debug("Connection closed:", url)
@@ -71,11 +74,9 @@ export class Client {
         this.#subs.delete(id)
     }
 
-
-
-    // TODO: Generator version of this query. 
+    // TODO: Generator version of this query.  <--- Now we have a Channel, this should be easier.
     /** Do a one-time query, collect results, and stop streaming. */
-    async query(filter: cli.Filter): Promise<nostr.Event[]> {
+    async queryOnce(filter: cli.Filter): Promise<nostr.Event[]> {
         using sub = this.#newSub()
         const events: nostr.Event[] = []
         sub.addHandler(m => {
@@ -88,6 +89,96 @@ export class Client {
 
         await sub.awaitEose()
         return events
+    }
+
+    /**
+     * Query only saved events.
+     * 
+     * Will make multiple `REQ` requests to the server to ensure that you've gotten all 
+     * saved events, even if the server has a lower limit.
+     */
+    async * querySaved(filter: cli.Filter): AsyncGenerator<nostr.Event> {
+        const requestedLimit = filter.limit ?? Number.MAX_SAFE_INTEGER
+        let eventCount = 0
+        let lastEventTime = Date.now()
+
+        let batchCount = 0
+        for await (const msg of this.query(filter)) {
+            const [msgType] = msg
+            if (msgType == "EOSE") {
+                break
+            }
+            if (msgType != "EVENT") {
+                console.warn("Unexpected event type:", msgType)
+                continue
+            }
+            const [_msgType, _subId, event] = msg
+            batchCount += 1
+            eventCount += 1
+            lastEventTime = event.created_at
+            if (eventCount > requestedLimit) {
+                console.warn("Received more events than requested:", batchCount)
+                return
+            }
+            yield event
+            if (eventCount == requestedLimit) {
+                return
+            }
+        }
+
+        // IF the server gives us all the items we want, then 
+        // we're done. But some servers may impose a smaller limit,
+        // or a default limit, and we want to query all of them.
+        // Keep querying until we get back an empty batch. (or throtteld by the server.)
+        while (batchCount > 1 && eventCount < requestedLimit) {
+            batchCount = 0
+            const batchFilter: cli.Filter = {...filter, until: lastEventTime}
+
+            inner: for await (const msg of this.query(batchFilter)) {
+                const [msgType] = msg
+                if (msgType == "EOSE" || msgType == "CLOSED") {
+                    break inner
+                }
+                if (msgType != "EVENT") {
+                    console.warn("Unexpected event type:", msgType)
+                    continue
+                }
+                const [_msgType, _subId, event] = msg
+                batchCount += 1
+                eventCount += 1
+                lastEventTime = event.created_at
+                if (eventCount > requestedLimit) {
+                    console.warn("Received more events than requested:", batchCount)
+                    return
+                }
+                yield event
+                if (eventCount == requestedLimit) {
+                    return
+                }
+            }
+
+        }
+
+    }
+    /**
+     * A streaming query of events.
+     * 
+     * Continues returning events 
+     * until the subscription is closed by the server, or the
+     * generator is closed on the client (which closes the underlying
+     * subscription).
+     */
+    async * query(filter: cli.Filter): AsyncGenerator<server.Message> {
+        using chan = new Channel<server.Message>
+        using sub = this.#newSub()
+        sub.addHandler(m => {
+            chan.send(m)
+        })
+        this.#send(["REQ", sub.id, filter])
+
+        for await (const msg of chan) {
+            yield msg
+        }
     }
 
     async #send(r: cli.Message) {
@@ -117,7 +208,7 @@ export class Client {
         }
     }
 
-    #remoteClosed() {
+    #onClosed() {
         this.#toListeners(l => {
             l.connectionClosed?.()
         })
@@ -282,31 +373,6 @@ class Subscription {
     }
 }
 
-class Future<T> {
-    constructor() {
-        const {promise, resolve, reject} = Promise.withResolvers<T>()
-        this.promise = promise
-        this.resolve = resolve
-        this.reject = reject
-        
-        promise.then(v => {
-            this.#value = v
-            this.#resolved = true
-        })
-
-    }
-
-    readonly promise: Promise<T>
-    readonly resolve: (value: T | PromiseLike<T>) => void
-    readonly reject: (reason?: unknown) => void
-
-    #resolved = false
-    get resolved() { return this.#resolved }
-
-   
-    #value?: T
-    get value() { return this.#value }
-}
 
 const wsState = {
     CONNECTING: 0,

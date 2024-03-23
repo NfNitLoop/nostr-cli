@@ -22,24 +22,34 @@ async function main() {
     // client.firehose()
     // await client.awaitClose()
 
-    const events = await client.query({
-        // kinds: [
-        //     // EVENT_TYPES.meta
-        //     EVENT_TYPES.longForm,
-        // ],
-        authors: [
-            // Cody:
-            "dc4312e46b0e382105d154290c419e606a732004cd720def192100b915a1b9ac"
-        ],
-        // "#t": ["esperanto"]
-    })
+    // const events = await client.queryOnce({
+    //     kinds: [0, 1]
+    //     //     // EVENT_TYPES.meta
+    //     //     EVENT_TYPES.longForm,
+    //     // ],
+    //     // authors: [
+    //     //     // Cody:
+    //     //     "dc4312e46b0e382105d154290c419e606a732004cd720def192100b915a1b9ac"
+    //     // ],
+    //     // "#t": ["esperanto"]
+    // })
 
-    for (const e of events) {
-        console.log("---")
-        console.log(new EventObj(e).toString())
+    const filter = {
+        kinds: [0, 1]
     }
 
-    console.log(events.length, "events")
+
+    for await (const msg of client.query(filter)) {
+        console.log("---")
+        const [msgType] = msg
+        if (msgType == "EVENT") {
+            const [_msgType, _subID, event] = msg
+            console.log(new EventObj(event).toString())
+            continue
+        }
+        console.log(JSON.stringify(msg))
+    }
+
 }
 
 if (import.meta.main) { await main() }

@@ -10,6 +10,8 @@ import { Command } from "@cliffy/command"
 
 import { generateSecretKey, getPublicKey, nip05, nip19 } from "@nostr/tools"
 import { Client } from "./src/nostr/client.ts"
+import * as cli from "./src/nostr/client_messages.ts"
+import { EventObj } from "./src/nostr/nostr.ts";
 
 async function main() {
     await parse_args(Deno.args)
@@ -44,6 +46,13 @@ async function parse_args(args: string[]) {
         .option("--limit <max:number>", "Limit the number of events to copy", {default: 1})
         .action(nt_sync)
 
+    cmd.command("query <relayURL:string>")
+        .description("Fetch some events from a relay")
+        .option("--limit <max:number>", "Limit the number of events to query")
+        .option("--kinds <kinds:number[]>", "Which event kinds to query")
+        .option("--debug", "enable debug logging", {default: false})
+        .action(nt_query)
+
     await cmd.parse(args)
 
 }
@@ -75,7 +84,7 @@ function nt_generate() {
 
 }
 
-async function nt_sync(syncOpts: SyncOpts, pubkey: string, from: string, to: string) {
+async function nt_sync(_syncOpts: SyncOpts, pubkey: string, from: string, to: string) {
     using source = Client.connect(normalizeWSS(from)) //.withDebugLogging()
     using dest = Client.connect(normalizeWSS(to)) //.withDebugLogging()
 
@@ -83,7 +92,7 @@ async function nt_sync(syncOpts: SyncOpts, pubkey: string, from: string, to: str
         authors: [pubkey],
     }
 
-    const sourceEventsPromise = source.query(filter)
+    const sourceEventsPromise = source.queryOnce(filter)
 
     // I'd prefer to just write the events to `dest` and let it NO-OP the duplicates.
     // However, relay implementations seem to be stingy with writes (even if they were NO-OPs),
@@ -93,7 +102,7 @@ async function nt_sync(syncOpts: SyncOpts, pubkey: string, from: string, to: str
     // How to deal with that?
 
     const destEventIDs = new Set(
-        (await dest.query(filter))
+        (await dest.queryOnce(filter))
         .map(it => it.id)
     )
     
@@ -109,6 +118,29 @@ async function nt_sync(syncOpts: SyncOpts, pubkey: string, from: string, to: str
     }
 
     console.log(`Published ${newEvents.length} events`)
+}
+
+type QueryOptions = {
+    kinds?: number[]
+    limit?: number
+    debug: boolean
+}
+
+async function nt_query(opts: QueryOptions, wssURL: string) {
+    using client = Client.connect(wssURL)
+    if (opts.debug) {
+        client.withDebugLogging()
+    }
+    const filter: cli.Filter = {
+        kinds: opts.kinds,
+        limit: opts.limit
+    }
+    
+    for await (const event of client.querySaved(filter)) {
+        console.log("")
+        console.log("---")
+        console.log(new EventObj(event).toString())
+    }
 }
 
 function normalizeWSS(url: string): string {
