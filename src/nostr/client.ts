@@ -75,7 +75,10 @@ export class Client {
     }
 
     // TODO: Generator version of this query.  <--- Now we have a Channel, this should be easier.
-    /** Do a one-time query, collect results, and stop streaming. */
+    /** 
+     * Do a one-time query, collect results, and stop streaming. 
+     * @deprecated Probably broken. Use QuerySaved.
+     */
     async queryOnce(filter: cli.Filter): Promise<nostr.Event[]> {
         using sub = this.#newSub()
         const events: nostr.Event[] = []
@@ -131,12 +134,12 @@ export class Client {
         // or a default limit, and we want to query all of them.
         // Keep querying until we get back an empty batch. (or throtteld by the server.)
         while (batchCount > 1 && eventCount < requestedLimit) {
-            batchCount = 0
+                        batchCount = 0
             const batchFilter: cli.Filter = {...filter, until: lastEventTime}
 
             inner: for await (const msg of this.query(batchFilter)) {
                 const [msgType] = msg
-                if (msgType == "EOSE" || msgType == "CLOSED") {
+                if (msgType == "EOSE") {
                     break inner
                 }
                 if (msgType != "EVENT") {
@@ -168,15 +171,22 @@ export class Client {
      * generator is closed on the client (which closes the underlying
      * subscription).
      */
-    async * query(filter: cli.Filter): AsyncGenerator<server.Message> {
+    async * query(filter: cli.Filter): AsyncGenerator<QueriedMessage> {
         using chan = new Channel<server.Message>
         using sub = this.#newSub()
         sub.addHandler(m => {
             chan.send(m)
         })
+        sub.awaitClosed().then(() => {
+            chan.close()
+        })
         this.#send(["REQ", sub.id, filter])
 
         for await (const msg of chan) {
+            const [msgType] = msg;
+            if (msgType != "EVENT" && msgType != "EOSE") {
+                throw new Error(`Unexpected message type in query results: ${msgType}`)
+            }
             yield msg
         }
     }
@@ -324,14 +334,16 @@ class Subscription {
     gotMessage(message: server.Message) {
         if (server.subscriptionId(message) != this.id) { return }
 
-        if (message[0] == "EOSE") {
-            this.#eose.resolve()
-            return
-        }
-
         if (message[0] == "CLOSED") {
             this.#closed.resolve()
             return
+        }
+
+        if (message[0] == "EOSE") {
+            this.#eose.resolve()
+            // note: DO pass EOSE through to subscribers.
+            // a query stream needs to know when the EOSE has hit.
+            // Simpler to let the message through than await multiple promises.
         }
         
         for (const h of this.#handlers) {
@@ -380,3 +392,7 @@ const wsState = {
     CLOSING: 2,
     CLOSED: 3,
 } as const
+
+
+/** Query will only return these kinds of messages: */
+export type QueriedMessage = server.Event | server.EOSE;

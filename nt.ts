@@ -98,7 +98,7 @@ async function nt_sync(_syncOpts: SyncOpts, pubkey: string, from: string, to: st
     // However, relay implementations seem to be stingy with writes (even if they were NO-OPs),
     // and more forgiving with reads. So we do a read and only send items we didn't find.
 
-    // TODO: On implementation sent a NOTICE that I was going too fast, and then seemed to black-hole the connection.
+    // TODO: One implementation sent a NOTICE that I was going too fast, and then seemed to black-hole the connection.
     // How to deal with that?
 
     const destEventIDs = new Set(
@@ -118,6 +118,10 @@ async function nt_sync(_syncOpts: SyncOpts, pubkey: string, from: string, to: st
     }
 
     console.log(`Published ${newEvents.length} events`)
+
+    // TODO: Add a --feed option that syncs any content/mentions from people the user follows.
+    // NIP-18 reposts: k6, k1+q, k16
+    // NIP-1: k0, k1, k3, 
 }
 
 type QueryOptions = {
