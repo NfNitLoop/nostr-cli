@@ -1,0 +1,47 @@
+# Sample configuration file for nt (Nostr Tools CLI.)
+
+# Options which serve as the default for all profiles.
+# May be overridden by each individual profile.
+[default]
+
+# Where to send a collected "feed".
+# Also used as the location to fetch your follows.
+destination = "ws://127.0.0.1:8095"
+
+# # Should we copy my own posts?
+# fetchMine = true # default
+
+# # Should we copy posts of those I follow?
+# fetchFollows = true # default
+
+# # Should we copy events/profiles that my posts refer to?
+# fetchMyRefs = true # default
+# # Should we copy events/profiles that my follows' events refer to?
+# fetchFollowsRefs = true # default
+
+# If we can't find a user's list of preferred relays, we'll try finding them on one of these relays.
+# If we still can't find their preferred relays, we'll just look for their posts on these relays.
+fallbackRelays = "popular"
+
+[profiles.foo]
+
+# pubkey in hex:
+# (TODO: Support npub* format and [user]@domain format.)
+pubkey = "012345689abcdef"
+
+
+
+
+
+
+# You can make multiple "relay sets" for reuse across profiles.
+[relaySets.popular]
+relays = [
+    "wss://nos.lol",
+    # etc.
+]
+
+# TODO: mode = "round-robin", "random", "ordered". For now: ordered.
+
+# TODO:
+# [userSets] for ignore lists.

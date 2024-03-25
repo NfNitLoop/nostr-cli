@@ -74,24 +74,24 @@ export class Client {
         this.#subs.delete(id)
     }
 
-    // TODO: Generator version of this query.  <--- Now we have a Channel, this should be easier.
     /** 
-     * Do a one-time query, collect results, and stop streaming. 
-     * @deprecated Probably broken. Use QuerySaved.
+     * A non-streaming vesion of {@link querySaved}
      */
-    async queryOnce(filter: cli.Filter): Promise<nostr.Event[]> {
-        using sub = this.#newSub()
+    async querySimple(filter: cli.Filter & {limit: number}): Promise<nostr.Event[]> {
         const events: nostr.Event[] = []
-        sub.addHandler(m => {
-            if (m[0] == "EVENT") {
-                events.push(m[2])
-            }
-        })
-
-        this.#send(["REQ", sub.id, filter])
-
-        await sub.awaitEose()
+        for await (const event of this.querySaved(filter)) {
+            events.push(event)
+        }
         return events
+    }
+
+    /** A version of {@link querySimple} which expects a maximum of one result. */
+    async queryOne(filter: Omit<cli.Filter, "limit">): Promise<nostr.Event|null> {
+        const events = await this.querySimple({
+            ...filter,
+            limit: 1
+        })
+        return events[0] ?? null
     }
 
     /**
@@ -222,7 +222,11 @@ export class Client {
         this.#toListeners(l => {
             l.connectionClosed?.()
         })
+        this.#closed = true
     }
+
+    #closed = false;
+    get closed() { return this.#closed }
 
 
 
@@ -314,6 +318,16 @@ export class Client {
             
         throw new Error(`Server error when publishing message: ${detail}`)
     }
+
+    async getProfile(pubkey: string): Promise<nostr.Event|null> {
+        return await this.queryOne({
+            authors: [pubkey],
+            kinds: [0],
+        })
+
+
+    }
+
 }
 
 type MessageHandler = (m: server.Message) => void

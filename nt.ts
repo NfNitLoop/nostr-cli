@@ -11,6 +11,8 @@ import { Command } from "@cliffy/command"
 import { generateSecretKey, getPublicKey, nip05, nip19 } from "@nostr/tools"
 import { Client } from "./src/nostr/client.ts"
 import * as cli from "./src/nostr/client_messages.ts"
+import * as collect from "./src/collect.ts"
+import * as nostr from "./src/nostr/nostr.ts"
 import { EventObj } from "./src/nostr/nostr.ts";
 
 async function main() {
@@ -41,10 +43,10 @@ async function parse_args(args: string[]) {
         .description("Generate a new keypair")
         .action(nt_generate)
 
-    cmd.command("sync <pubkey:string> <from:string> <to:string>")
+    cmd.command("copy <pubkey:string> <from:string> <to:string>")
         .description("Copy from one relay to another")
         .option("--limit <max:number>", "Limit the number of events to copy", {default: 1})
-        .action(nt_sync)
+        .action(nt_copy)
 
     cmd.command("query <relayURL:string>")
         .description("Fetch some events from a relay")
@@ -52,6 +54,12 @@ async function parse_args(args: string[]) {
         .option("--kinds <kinds:number[]>", "Which event kinds to query")
         .option("--debug", "enable debug logging", {default: false})
         .action(nt_query)
+
+    cmd.command("collect <profileName:string>")
+        .description("Collect a user's follow feed onto one server.")
+        .option("--limit <max:number>", "Limit the number of events from each follow.")
+        .option("--config <file:string>", "The config file to load.", {default: "nt.toml"})
+        .action(nt_collect)
 
     await cmd.parse(args)
 
@@ -84,15 +92,16 @@ function nt_generate() {
 
 }
 
-async function nt_sync(_syncOpts: SyncOpts, pubkey: string, from: string, to: string) {
+async function nt_copy(_syncOpts: SyncOpts, pubkey: string, from: string, to: string) {
     using source = Client.connect(normalizeWSS(from)) //.withDebugLogging()
     using dest = Client.connect(normalizeWSS(to)) //.withDebugLogging()
 
     const filter = {
         authors: [pubkey],
+        limit: 50,
     }
 
-    const sourceEventsPromise = source.queryOnce(filter)
+    const sourceEventsPromise = source.querySimple(filter)
 
     // I'd prefer to just write the events to `dest` and let it NO-OP the duplicates.
     // However, relay implementations seem to be stingy with writes (even if they were NO-OPs),
@@ -102,7 +111,7 @@ async function nt_sync(_syncOpts: SyncOpts, pubkey: string, from: string, to: st
     // How to deal with that?
 
     const destEventIDs = new Set(
-        (await dest.queryOnce(filter))
+        (await dest.querySimple(filter))
         .map(it => it.id)
     )
     
@@ -159,5 +168,23 @@ type SyncOpts = {
     limit: number
 }
 
+async function nt_collect(opts: CollectOptions, profileName: string) {
+    const config = await collect.loadConfig(opts.config)
+    const profile = config.get(profileName)
+    if (!profile) {
+        throw new Error(`No such profile name: ${profileName}`)
+    }
+
+    using c = new collect.Collector(profile)
+    await c.run()
+}
+
+
+type CollectOptions = {
+    limit?: number
+    config: string
+}
+
 
 if (import.meta.main) { await main() }
+
