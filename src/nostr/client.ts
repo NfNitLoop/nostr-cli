@@ -2,6 +2,7 @@ import { delay } from "@std/async";
 import * as cli from "./client_messages.ts"
 import * as server from "./server_messages.ts"
 import * as nostr from "./nostr.ts"
+import * as relay from "./relays.ts"
 import { blue } from "jsr:@std/fmt/colors"
 
 
@@ -24,11 +25,24 @@ export class Client {
 
     static connect(url: string, opts?: ClientOpts): Client {
         const ws = new WebSocket(url)
-
         return new Client(url, opts ?? {}, ws)
-
     }
 
+    static async fetchInfo(relayWSURL: string): Promise<relay.Info> {
+        const url = relayWSURL.replace(/^ws/, "http")
+        const res = await fetch(url, {
+            headers: {
+                "Accept": relay.MIME_TYPE
+            }
+        })
+        if (!res.ok) {
+            throw new Error(`Relay ${url} gave HTTP error for info: ${res.status} (${res.statusText})`)
+        }
+
+        const json = await res.json()
+        return relay.Info.passthrough().parse(json)
+    }
+  
     private constructor(readonly url: string, opts: ClientOpts, ws: WebSocket) {
         this.#listeners = opts?.listeners ?? []
         this.#ws = ws
@@ -135,7 +149,7 @@ export class Client {
         // Keep querying until we get back an empty batch. (or throtteld by the server.)
         while (batchCount > 1 && eventCount < requestedLimit) {
                         batchCount = 0
-            const batchFilter: cli.Filter = {...filter, until: lastEventTime}
+            const batchFilter: cli.Filter = {...filter, until: lastEventTime - 1}
 
             inner: for await (const msg of this.query(batchFilter)) {
                 const [msgType] = msg
@@ -283,6 +297,10 @@ export class Client {
     }
 
     async publish(event: nostr.Event) {
+
+        // TODO: if message is "large", and this relay supports NIP-45,
+        // check if it already has the event before sending it.
+
         const okMessage = new Future<server.OK>()
 
         const listener = {
@@ -317,6 +335,22 @@ export class Client {
         }
             
         throw new Error(`Server error when publishing message: ${detail}`)
+    }
+
+    /** 
+     * Like publish, but doesn't throw.
+     * @returns true if an event was published without error.
+     */
+    async tryPublish(event: nostr.Event) {
+        let published = false
+        try {
+            await this.publish(event)
+            published = true
+        } catch (_: unknown) {
+            // NO-OP
+            // Debug log?
+        }
+        return published
     }
 
     async getProfile(pubkey: string): Promise<nostr.Event|null> {

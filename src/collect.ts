@@ -97,15 +97,26 @@ export const Config = z.object({
     relaySets: z.record(z.string().min(1), RelaySet).optional(),
 })
 
+export type Options = {
+    profile: ConfigProfile,
+    limit?: number
+}
+
 
 /**
  * Ties multiple clients together to help with collecting events from multiple places into one.
  */
 export class Collector {
-    constructor(private profile: ConfigProfile) {}
 
-    async run() {
-        
+    private profile: ConfigProfile
+    #limit: number
+
+    constructor(opts: Options) {
+        this.profile = opts.profile
+        this.#limit = opts.limit ?? 50
+    }
+
+    async run() {    
         log.debug("Collecting feed for user", this.profile.pubkey)
         log.debug("Fetching user profile from upstream:", this.profile.destination)
 
@@ -116,9 +127,8 @@ export class Collector {
         const follows = extractFollows(followEvent);
         log.info("found follows:", follows)
 
-        const limit = 50 // TODO: option? runtime flag?
         for (const follow of follows) {
-            await this.#copyEvents(follow.pubkey, limit)
+            await this.#copyEvents(follow.pubkey, this.#limit)
         }
 
         // TODO: copy my own events too.
@@ -128,15 +138,16 @@ export class Collector {
     async #copyEvents(pubkey: string, limit: number) {
         // TODO: make publish check for event before sending it. (optionally?)
         // TODO: Get preferred relays for a profile.
-        log.info("Copying", limit, "events for", pubkey)
+        log.info("Copying up to", limit, "events for", pubkey)
         for (const client of this.#profileSources(pubkey)) {
             const events = await client.querySimple({
                 authors: [pubkey],
                 limit,
             })
             for (const event of events) {
-                await this.#dest.publish(event)
-                log.info("copied", event.id)
+                if (await this.#dest.tryPublish(event)) {
+                    log.info("copied", event.id)
+                }
             }
         }
     }

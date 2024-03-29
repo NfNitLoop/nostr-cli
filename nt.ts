@@ -6,13 +6,12 @@
  */
 
 
-import { Command } from "@cliffy/command"
+import { ArgumentValue, Command, Type, ValidationError } from "@cliffy/command"
 
 import { generateSecretKey, getPublicKey, nip05, nip19 } from "@nostr/tools"
 import { Client } from "./src/nostr/client.ts"
 import * as cli from "./src/nostr/client_messages.ts"
 import * as collect from "./src/collect.ts"
-import * as nostr from "./src/nostr/nostr.ts"
 import { EventObj } from "./src/nostr/nostr.ts";
 
 async function main() {
@@ -49,9 +48,11 @@ async function parse_args(args: string[]) {
         .action(nt_copy)
 
     cmd.command("query <relayURL:string>")
+        .type("pubkey", new PubKeyType())
         .description("Fetch some events from a relay")
         .option("--limit <max:number>", "Limit the number of events to query")
         .option("--kinds <kinds:number[]>", "Which event kinds to query")
+        .option("--authors <authors:pubkey[]>", "Limit results to these authors.")
         .option("--debug", "enable debug logging", {default: false})
         .action(nt_query)
 
@@ -61,9 +62,30 @@ async function parse_args(args: string[]) {
         .option("--config <file:string>", "The config file to load.", {default: "nt.toml"})
         .action(nt_collect)
 
+    cmd.command("info <relayUrl:string>")
+        .description("Fetch a server's NIP-11 information document")
+        .action(nt_info)
+    
+
     await cmd.parse(args)
 
 }
+
+class PubKeyType extends Type<string> {
+
+    private static PAT = /^[0-9a-f]{64}$/ // 32 bytes as hex
+
+    public parse({label, name, value}: ArgumentValue): string {
+        if (!value.match(PubKeyType.PAT)) {
+            throw new ValidationError(
+                `${label} "${name}" must be 64 hexadecimal digits.`
+            )
+        }
+
+        return value
+    }
+}
+
 
 
 function nt_decode(_opts: unknown, value?: string) {
@@ -135,6 +157,7 @@ async function nt_copy(_syncOpts: SyncOpts, pubkey: string, from: string, to: st
 
 type QueryOptions = {
     kinds?: number[]
+    authors?: string[]
     limit?: number
     debug: boolean
 }
@@ -146,7 +169,8 @@ async function nt_query(opts: QueryOptions, wssURL: string) {
     }
     const filter: cli.Filter = {
         kinds: opts.kinds,
-        limit: opts.limit
+        limit: opts.limit,
+        authors: opts.authors,
     }
     
     for await (const event of client.querySaved(filter)) {
@@ -175,8 +199,17 @@ async function nt_collect(opts: CollectOptions, profileName: string) {
         throw new Error(`No such profile name: ${profileName}`)
     }
 
-    using c = new collect.Collector(profile)
+    using c = new collect.Collector({
+        profile,
+        limit: opts.limit
+    })
     await c.run()
+}
+
+async function nt_info(_opts: unknown, url: string) {
+    url = normalizeWSS(url)
+    const info = await Client.fetchInfo(url)
+    console.log(JSON.stringify(info, undefined, 4))
 }
 
 
