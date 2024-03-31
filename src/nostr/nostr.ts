@@ -36,6 +36,7 @@ export const Event = z.object({
 
 /** Wrapper with helpful methods on events */
 export class EventObj {
+
     constructor (readonly event: Event) {}
 
     get id() { return this.event.id }
@@ -80,6 +81,9 @@ export class EventObj {
         return new Date(this.created_at * 1000).toLocaleString()
     }
 
+    validate(): boolean {
+        return ntools.validateEvent(this.event)
+    }
 }
 
 export const EVENT_TYPES = {

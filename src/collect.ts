@@ -6,7 +6,8 @@
 import { z } from "zod";
 import * as toml from "jsr:@std/toml"
 import * as nostr from "./nostr/nostr.ts"
-import { Client } from "./nostr/client.ts"
+import { Client, MultiClient } from "./nostr/client.ts"
+import { lazy } from "@nfnitloop/better-iterators"
 
 export async function loadConfig(filePath: string): Promise<Map<string,ConfigProfile>> {
     const fileData = await Deno.readFile(filePath)
@@ -100,6 +101,7 @@ export const Config = z.object({
 export type Options = {
     profile: ConfigProfile,
     limit?: number
+    debug?: boolean
 }
 
 
@@ -110,16 +112,27 @@ export class Collector {
 
     private profile: ConfigProfile
     #limit: number
+    #debug: boolean
 
     constructor(opts: Options) {
         this.profile = opts.profile
         this.#limit = opts.limit ?? 50
+        this.#debug = opts.debug || false
     }
 
     async run() {    
         log.debug("Collecting feed for user", this.profile.pubkey)
         log.debug("Fetching user profile from upstream:", this.profile.destination)
 
+        // Copy profiles first. 
+        await this.#copyProfile(this.profile.pubkey)
+        // Copy follows, because it may grant more permissions on the server:
+        await this.#copyFollows(this.profile.pubkey)
+
+        // Copy my events: (might include updates to follows)
+        await this.#copyUserEvents(this.profile.pubkey, this.#limit)
+
+        // Find out who I follow:
         const followEvent = await this.#dest.queryOne({
             authors: [this.profile.pubkey],
             kinds: [3], // user follows.
@@ -128,16 +141,14 @@ export class Collector {
         log.info("found follows:", follows)
 
         for (const follow of follows) {
-            await this.#copyEvents(follow.pubkey, this.#limit)
+            await this.#copyUserEvents(follow.pubkey, this.#limit)
         }
 
-        // TODO: copy my own events too.
-        // TODO: Copy follows references. (4x options from config)
-
+        await this.#copyEventRefs()
+        await this.#copyProfileRefs()
     }
-    async #copyEvents(pubkey: string, limit: number) {
-        // TODO: make publish check for event before sending it. (optionally?)
-        // TODO: Get preferred relays for a profile.
+
+    async #copyUserEvents(pubkey: string, limit: number) {
         log.info("Copying up to", limit, "events for", pubkey)
         for (const client of this.#profileSources(pubkey)) {
             const events = await client.querySimple({
@@ -145,14 +156,130 @@ export class Collector {
                 limit,
             })
             for (const event of events) {
-                if (await this.#dest.tryPublish(event)) {
-                    log.info("copied", event.id)
+                if (await this.#tryPublish(event)) {
+                    this.#saveRefs(event)
                 }
             }
         }
     }
 
-    #clients = new Map<string, Client>();
+    // event IDs of references that were mentioned. 
+    #eventsToCopy = new Set<string>()
+    // Profile IDs that are referenced in events we copied.
+    #profilesToCopy = new Set<string>()
+    // TODO: "a" tag for replaceable events?
+
+    #saveRefs(event: nostr.Event) {
+        const events = event.tags?.filter(t => t[0] == "e")?.map(t => t[1])
+        events?.forEach(r => this.#eventsToCopy.add(r))
+
+        const pubkeys = event.tags?.filter(t => t[0] == "p")?.map(t => t[1])
+        pubkeys?.forEach(p => this.#profilesToCopy.add(p))
+
+        this.#profilesToCopy.add(event.pubkey)
+    }
+
+    /** Copy events that are referred to by this one. */
+    async #copyEventRefs() {
+        // Limited by the size of the REQ that servers will let us send:
+        const chunkSize = 50
+
+        const mc = MultiClient.forClients([...this.#fallbackClients()])
+        
+        const workers = lazy(this.#eventsToCopy).chunked(chunkSize).toAsync().map({
+            parallel: 3,
+            mapper: async (chunk) => {
+                // TODO: warn about events we couldn't find?
+                const events = await mc.getEvents(chunk)
+                for (const event of events.values()) {
+                    const ok = await this.#tryPublish(event)
+                    if (ok) {
+                        this.#profilesToCopy.add(event.pubkey)
+                    }
+                }
+                return null
+            }
+        })
+
+        for await (const _result of workers) {
+            // Wait for everything to do its thing.
+        }
+        this.#eventsToCopy.clear()
+    }
+
+    async #copyProfileRefs() {
+        const mc = MultiClient.forClients([...this.#fallbackClients()])
+        const workers = lazy(this.#profilesToCopy).toAsync().map({
+            parallel: 5,
+            mapper: async (chunk) => {
+                const profile = await mc.getProfile(chunk)
+                if (profile) {
+                    await this.#tryPublish(profile)
+                }
+                return null
+            }
+        })
+
+        for await (const _result of workers) {
+            // Wait for everything to do its thing.
+        }
+        this.#profilesToCopy.clear() 
+    }
+
+    async #copyProfile(pubkey: nostr.PubKey) {
+        if (this.#copiedProfiles.has(pubkey)) {
+            return
+        }
+        // Mark that we're copying the profile, to prevent stampede:
+        this.#copiedProfiles.set(pubkey, 0);
+
+        for (const client of this.#fallbackClients()) {
+            const profile = await client.getProfile(pubkey)
+            if (!profile) continue
+            this.#copiedProfiles.set(pubkey, profile.created_at)
+            const copied = await this.#tryPublish(profile)
+            if (copied) {
+                log.info("Copied profile for", pubkey, displayName(profile))
+            }
+            return
+        }
+
+        log.info("Couldn't find profile:", pubkey)
+    }
+
+    async #copyFollows(pubkey: nostr.PubKey) {
+        for (const client of this.#fallbackClients()) { 
+            const event = await client.getFollows(pubkey)
+            if (!event) continue
+            // TODO: use tryPublish.
+            await this.#dest.publish(event)
+            return
+        }
+    }
+
+    async #tryPublish(event: nostr.Event): Promise<boolean> {
+        if (this.#copiedEvents.has(event.id)) {
+            return false
+        }
+
+        // Adding before we actually do the copy, to avoid race condition / stampede.
+        this.#copiedEvents.add(event.id)
+        const {published, isDuplicate} =  await this.#dest.tryPublish(event)
+        
+        const ok = published && !isDuplicate
+        if (ok) {
+            log.info("copied", event.id)
+        }
+        return ok
+    }
+
+    // Event IDs we've already copied. (or tried to).
+    // TODO: Should probably be an LRU to keep from growing forever?
+    #copiedEvents = new Set<string>()
+    // A map of profiles we've already copied and the created_at timestmap.
+    #copiedProfiles = new Map<string, number>()
+
+    #clients = new Map<string, Client>()
 
     /** get a cached client. Returns null if it has already closed its connection. */
     #getClient(url: string): Client|null {
@@ -162,6 +289,9 @@ export class Collector {
 
         client = Client.connect(url)
         this.#clients.set(url, client)
+        if (this.#debug) {
+            client.withDebugLogging()
+        }
         return client
     }
 
@@ -179,6 +309,7 @@ export class Collector {
 
     // Hmm, this might be different per followed user. Not sure this is helpful.
     // TODO: Replace w/ something per-user.
+    // Actually we need this for fetching an event w/ unknown pubkey.
     * #fallbackClients(): Generator<Client> {
         // return this.#relays.map(url => this.#getClient(url)).filter(notNull)
         const relays = (this.profile?.fallbackRelays?.relays ?? [])
@@ -191,6 +322,7 @@ export class Collector {
 
     /** According to a user's profile, where should we read their content from? */
     * #profileSources(pubkey: string): Generator<Client> {
+        // TODO: Read profile, then fallback.
         yield * this.#fallbackClients()
     }
 
@@ -206,6 +338,9 @@ export class Collector {
         if (profile || profile === null) {
             return profile
         }
+
+        // TODO: This implementation can end up racing the DB to fetch.
+        // Use a proper cache + fetcher.
 
         for (const client of this.#allClients()) {
             const profile = await client.getProfile(key)
@@ -256,3 +391,18 @@ const log = {
     info: console.log,
     debug: console.log,
 } as const
+
+function displayName(profile: nostr.Event): string|null {
+    if (profile.kind != 0) {
+        return null
+    }
+
+    let json: Record<string, string> 
+    try {
+        json = JSON.parse(profile.content)
+    } catch (_: unknown) {
+        return "<parse error>"
+    }
+
+    return json.name || json.display_name || json.username || json.nip05
+}

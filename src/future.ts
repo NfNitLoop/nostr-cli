@@ -5,11 +5,17 @@ export class Future<T> {
         this.resolve = resolve
         this.reject = reject
         
-        promise.then(v => {
-            this.#value = v
-            this.#resolved = true
-        })
+        this.#awaitResolution()
+    }
 
+    async #awaitResolution() {
+        try {
+            this.#value = await this.promise
+        } catch (e: unknown) {
+            this.#threw = e
+        } finally {
+            this.#resolved = true
+        }
     }
 
     readonly promise: Promise<T>
@@ -19,6 +25,8 @@ export class Future<T> {
     #resolved = false
     get resolved() { return this.#resolved }
 
+    #threw: unknown = null
+    get threw() { return this.#threw }
    
     #value?: T
     get value() { return this.#value }

@@ -52,6 +52,7 @@ async function parse_args(args: string[]) {
         .description("Fetch some events from a relay")
         .option("--limit <max:number>", "Limit the number of events to query")
         .option("--kinds <kinds:number[]>", "Which event kinds to query")
+        .option("--ids <ids:pubkey[]>", "Which event kinds to query")
         .option("--authors <authors:pubkey[]>", "Limit results to these authors.")
         .option("--debug", "enable debug logging", {default: false})
         .action(nt_query)
@@ -60,6 +61,7 @@ async function parse_args(args: string[]) {
         .description("Collect a user's follow feed onto one server.")
         .option("--limit <max:number>", "Limit the number of events from each follow.")
         .option("--config <file:string>", "The config file to load.", {default: "nt.toml"})
+        .option("--debug", "enable debug logging", {default: false})
         .action(nt_collect)
 
     cmd.command("info <relayUrl:string>")
@@ -132,6 +134,8 @@ async function nt_copy(_syncOpts: SyncOpts, pubkey: string, from: string, to: st
     // TODO: One implementation sent a NOTICE that I was going too fast, and then seemed to black-hole the connection.
     // How to deal with that?
 
+    // TODO: Instead of reading up-front, maybe use COUNT to check if events exist at the destination?
+
     const destEventIDs = new Set(
         (await dest.querySimple(filter))
         .map(it => it.id)
@@ -142,13 +146,18 @@ async function nt_copy(_syncOpts: SyncOpts, pubkey: string, from: string, to: st
     const newEvents = sourceEvents.filter(it => !destEventIDs.has(it.id))
     console.debug(`Found ${newEvents.length} new events`)
 
-
+    let count = 0
     for (const event of newEvents) {
-        await dest.publish(event)
-        console.log(`Published ${event.id}`)
+        const published = await dest.tryPublish(event)
+        if (published) {
+            console.log(`Published ${event.id}`)
+            count++
+        } else {
+            console.log(`Not published: ${event.id} kind: ${event.kind}`)
+        }
     }
 
-    console.log(`Published ${newEvents.length} events`)
+    console.log(`Published ${count} events`)
 
     // TODO: Add a --feed option that syncs any content/mentions from people the user follows.
     // NIP-18 reposts: k6, k1+q, k16
@@ -158,6 +167,7 @@ async function nt_copy(_syncOpts: SyncOpts, pubkey: string, from: string, to: st
 type QueryOptions = {
     kinds?: number[]
     authors?: string[]
+    ids?: string[]
     limit?: number
     debug: boolean
 }
@@ -171,12 +181,18 @@ async function nt_query(opts: QueryOptions, wssURL: string) {
         kinds: opts.kinds,
         limit: opts.limit,
         authors: opts.authors,
+        ids: opts.ids,
     }
     
     for await (const event of client.querySaved(filter)) {
         console.log("")
         console.log("---")
-        console.log(new EventObj(event).toString())
+        const eObj = new EventObj(event)
+        console.log(eObj.toString())
+        if (!eObj.validate()) {
+            console.error("❌❌❌ Invalid signature!")
+        }
+
     }
 }
 
@@ -201,7 +217,8 @@ async function nt_collect(opts: CollectOptions, profileName: string) {
 
     using c = new collect.Collector({
         profile,
-        limit: opts.limit
+        limit: opts.limit,
+        debug: opts.debug
     })
     await c.run()
 }
@@ -216,6 +233,7 @@ async function nt_info(_opts: unknown, url: string) {
 type CollectOptions = {
     limit?: number
     config: string
+    debug: boolean
 }
 
 

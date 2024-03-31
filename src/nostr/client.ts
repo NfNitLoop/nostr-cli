@@ -9,6 +9,7 @@ import { blue } from "jsr:@std/fmt/colors"
 import { DisposableStack as DS } from "jsr:@nick/dispose";
 import { Future } from "../future.ts";
 import { Channel } from "../channel.ts";
+import { z } from "zod";
 
 
 export type Listener = {
@@ -297,7 +298,6 @@ export class Client {
     }
 
     async publish(event: nostr.Event) {
-
         // TODO: if message is "large", and this relay supports NIP-45,
         // check if it already has the event before sending it.
 
@@ -323,18 +323,19 @@ export class Client {
         this.#send(["EVENT", event])
         const [_type, _id, isOk, detail] = await okMessage.promise
 
-        if (isOk) {
-            return
-        }
+        const isDuplicate = detail?.startsWith("duplicate:")
+
 
         // Despite NIP-01 showing that duplicates should be `true`, the very first server I tried here 
         // returns `false`. D'oh. 
-        if (detail?.startsWith("duplicate:")) {
-            // TODO: Maybe return that this was a duplicate?
-            return
+        if (!isOk && !isDuplicate) {
+            throw new Error(`Server error when publishing message: ${detail}`)
         }
-            
-        throw new Error(`Server error when publishing message: ${detail}`)
+
+        return {
+            published: true,
+            isDuplicate
+        }    
     }
 
     /** 
@@ -342,26 +343,34 @@ export class Client {
      * @returns true if an event was published without error.
      */
     async tryPublish(event: nostr.Event) {
-        let published = false
-        try {
-            await this.publish(event)
-            published = true
-        } catch (_: unknown) {
-            // NO-OP
-            // Debug log?
+        let result = {
+            published: false,
+            isDuplicate: false,
+            hadError: false,
         }
-        return published
+        try {
+            result = { ...await this.publish(event), hadError: false }
+        } catch (_: unknown) {
+            result.hadError = true
+        }
+        return result
     }
 
+    /** Get the latest Profile the server has for this pubkey.  */
     async getProfile(pubkey: string): Promise<nostr.Event|null> {
         return await this.queryOne({
             authors: [pubkey],
             kinds: [0],
         })
-
-
     }
 
+    /** Get the latest follows (kind 3) the server has for this pubkey */
+    async getFollows(pubkey: string): Promise<nostr.Event|null> {
+        return await this.queryOne({
+            authors: [pubkey],
+            kinds: [3],
+        })
+    }
 }
 
 type MessageHandler = (m: server.Message) => void
@@ -444,3 +453,77 @@ const wsState = {
 
 /** Query will only return these kinds of messages: */
 export type QueriedMessage = server.Event | server.EOSE;
+
+/**
+ * Simplifies querying for events from multiple clients.
+ */
+export class MultiClient {
+
+    static forClients(clients: Client[]) {
+        return new MultiClient(clients)
+    }
+
+
+    #clients: Client[];
+    private constructor(clients: Client[]) {
+        this.#clients = clients
+    }
+
+    #fairClients() {
+        // TODO: can get fancy with "fairness" later.
+        return shuffled(this.#clients)
+    }
+
+
+    /** Get as many events as we can from several clients. */
+    async getEvents(events: nostr.EventID[]): Promise<Map<string, nostr.Event>> {
+
+        let remaining = [...events]
+        const found = new Map<string, nostr.Event>()
+        
+
+
+        for (const client of this.#fairClients()) {
+            remaining = remaining.filter(id => !found.has(id))
+            if (remaining.length == 0) { break }
+            const filter = {
+                ids: remaining,
+                limit: remaining.length,
+            }
+            try {
+                for (const event of await client.querySimple(filter)) {
+                    found.set(event.id, event)
+                }
+            } catch (e: unknown) {
+                console.warn("Error in getEvents()", e)
+            }
+        }
+
+        return found
+    }
+
+    /** Get any profile from this user, the first one we see from amy server. */
+    async getProfile(pubkey: nostr.PubKey): Promise<nostr.Event|null> {
+        for (const client of this.#fairClients()) {
+            try {
+                const profile = await client.getProfile(pubkey)
+                if (profile) { return profile }
+            } catch (e: unknown) {
+                console.log("Error fetching profile:", e)
+            }
+        }
+
+        return null
+    }
+
+}
+
+function shuffled<T>(arr: T[]) {
+    arr = [...arr]
+    for (let i = arr.length - 1; i > 0; i--) {
+        const oi = Math.floor(Math.random() * (i + 1));
+
+        [arr[i], arr[oi]] = [arr[oi], arr[i]]
+    }
+    return arr
+}

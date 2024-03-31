@@ -38,7 +38,7 @@ export class Channel<T> implements AsyncIterable<T> {
         while (true) {
             await this.#future.promise
 
-            // These might change after we've yielded, but we want to lock to these values:
+            // These might change when we yield, but we want to lock to these values:
             const items = this.#items
             const closed = this.#closed
 
