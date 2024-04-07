@@ -30,7 +30,7 @@ export const Event = z.object({
     sig: Signature,
     created_at: Timestamp,
     kind: z.number().int(),
-    tags: Tag.array().optional(),
+    tags: Tag.array(),
     content: z.string(),
 }).strict()
 

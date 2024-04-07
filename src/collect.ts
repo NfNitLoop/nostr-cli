@@ -9,6 +9,8 @@ import * as nostr from "./nostr/nostr.ts"
 import { Client, MultiClient } from "./nostr/client.ts"
 import { lazy } from "@nfnitloop/better-iterators"
 
+// I Guess this config isn't only used for `nt collect` anymore.
+// TODO: Move it somewhere else?
 export async function loadConfig(filePath: string): Promise<Map<string,ConfigProfile>> {
     const fileData = await Deno.readFile(filePath)
     const json = toml.parse(decodeUtf8.decode(fileData))
@@ -63,6 +65,7 @@ const Defaults = z.object({
 export type Profile = z.infer<typeof Profile>
 const Profile = z.object({
     pubkey: z.string().length(64).regex(/[0-9a-f]/g),
+    seckey: z.string().length(64).regex(/[0-9a-f]/g).optional(),
     destination: WSURL.optional(),
     fetchMine: z.boolean().optional(),
     fetchFollows: z.boolean().optional(),

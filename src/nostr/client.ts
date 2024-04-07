@@ -9,7 +9,6 @@ import { blue } from "jsr:@std/fmt/colors"
 import { DisposableStack as DS } from "jsr:@nick/dispose";
 import { Future } from "../future.ts";
 import { Channel } from "../channel.ts";
-import { z } from "zod";
 
 
 export type Listener = {

@@ -29,10 +29,9 @@ fallbackRelays = "popular"
 # (TODO: Support npub* format and [user]@domain format.)
 pubkey = "012345689abcdef"
 
-
-
-
-
+# NOT REQUIRED , so NOT RECOMMENDED TO SAVE for most commands.
+# Only needed for `nt upload`
+# seckey = "111122223333..."
 
 # You can make multiple "relay sets" for reuse across profiles.
 [relaySets.popular]

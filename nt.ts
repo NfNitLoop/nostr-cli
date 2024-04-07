@@ -13,6 +13,12 @@ import { Client } from "./src/nostr/client.ts"
 import * as cli from "./src/nostr/client_messages.ts"
 import * as collect from "./src/collect.ts"
 import { EventObj } from "./src/nostr/nostr.ts";
+import { encodeHex } from "jsr:@std/encoding@^0.219.1/hex";
+import { EncodeOptions, encodeFile } from "./src/nostr/nip95.ts";
+import * as blob from "./src/blob.ts"
+import { LocalSigner } from "./src/nostr/signer.ts";
+import { basename, extname } from "jsr:@std/path"
+import { contentType as mimeType } from "jsr:@std/media-types/content-type";
 
 async function main() {
     await parse_args(Deno.args)
@@ -67,6 +73,13 @@ async function parse_args(args: string[]) {
     cmd.command("info <relayUrl:string>")
         .description("Fetch a server's NIP-11 information document")
         .action(nt_info)
+
+    cmd.command("upload <filePath:string>")
+        .description("Upload a (possibly multi-part) NIP-95 file")
+        .option("--as <profileName:string>", "config profile to use to upload", {"required": true})
+        .option("--debug", "enable debug logging", {default: false})
+        .option("--config <file:string>", "The config file to load.", {default: "nt.toml"})
+        .action(nt_upload)
     
 
     await cmd.parse(args)
@@ -111,8 +124,8 @@ function nt_generate() {
     const sec = generateSecretKey()
     const pub = getPublicKey(sec)
 
-    console.log(nip19.nsecEncode(sec))
-    console.log(nip19.npubEncode(pub))
+    console.log(nip19.npubEncode(pub), pub)
+    console.log(nip19.nsecEncode(sec), encodeHex(sec))
 
 }
 
@@ -194,6 +207,44 @@ async function nt_query(opts: QueryOptions, wssURL: string) {
         }
 
     }
+}
+
+type UploadOptions = {
+    as: string,
+    debug: boolean,
+    config: string,
+}
+
+async function nt_upload(opts: UploadOptions, filePath: string) {
+    const config = await collect.loadConfig(opts.config)
+    const profile = config.get(opts.as)
+    if (!profile) {
+        throw new Error(`No such profile name: ${opts.as}`)
+    }
+
+    if (!profile.seckey) {
+        throw new Error(`Uploading files reqiures that you specify a "seckey" for this profile.`)
+    }
+
+    const signer = new LocalSigner(profile.pubkey, profile.seckey)
+
+    using file = await Deno.open(filePath)
+
+    const mimetype = mimeType(extname(filePath))
+
+    const fileOpts: EncodeOptions = {
+        file: await blob.wrap(file),
+        fileName: basename(filePath),
+        maxMessageSize: 128 * 1024, // TODO: Try asking the server for it, if user didn't specify.
+        signer,
+        mimetype,
+    }
+
+    // dry-run:
+    for await (const event of encodeFile(fileOpts)) {
+        console.log(JSON.stringify(event))
+    }
+
 }
 
 function normalizeWSS(url: string): string {
