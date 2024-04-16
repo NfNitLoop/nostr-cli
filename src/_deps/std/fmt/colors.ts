@@ -1,0 +1,1 @@
+export * from "jsr:@std/fmt@0.222.1/colors"

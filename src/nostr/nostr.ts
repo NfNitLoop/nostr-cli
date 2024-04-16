@@ -1,7 +1,7 @@
-import { z } from "zod";
-import { yellow, gray } from "@ryu/enogu";
-import * as ntools from "@nostr/tools"
-import {decodeHex} from "@std/encoding/hex"
+import { z } from "../_deps/zod.ts";
+import { yellow, gray } from "../_deps/std/fmt/colors.ts";
+import * as ntools from "../_deps/nostr-tools.ts"
+import {decodeHex} from "../_deps/std/encoding/hex.ts"
 
 
 

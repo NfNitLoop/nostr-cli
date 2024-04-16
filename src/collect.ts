@@ -3,11 +3,11 @@
  * @module
  */
 
-import { z } from "zod";
+import { z } from "./_deps/zod.ts";
 import * as toml from "jsr:@std/toml"
-import * as nostr from "./nostr/nostr.ts"
+import type * as nostr from "./nostr/nostr.ts"
 import { Client, MultiClient } from "./nostr/client.ts"
-import { lazy } from "@nfnitloop/better-iterators"
+import { lazy } from "./_deps/better-iterators.ts"
 
 // I Guess this config isn't only used for `nt collect` anymore.
 // TODO: Move it somewhere else?
@@ -324,7 +324,7 @@ export class Collector {
     }
 
     /** According to a user's profile, where should we read their content from? */
-    * #profileSources(pubkey: string): Generator<Client> {
+    * #profileSources(_pubkey: string): Generator<Client> {
         // TODO: Read profile, then fallback.
         yield * this.#fallbackClients()
     }
@@ -365,10 +365,6 @@ export class Collector {
     [Symbol.dispose]() {
         this.close()
     }
-}
-
-function notNull<T>(t: T|null): t is T {
-    return t !== null
 }
 
 function extractFollows(event: nostr.Event | null): FollowInfo[] {

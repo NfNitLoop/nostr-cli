@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "../_deps/zod.ts";
 import { Timestamp } from "./nostr.ts";
 import { PubKey } from "./nostr.ts";
 import * as nostr from "./nostr.ts"

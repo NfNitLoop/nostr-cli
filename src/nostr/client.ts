@@ -1,7 +1,7 @@
-import { delay } from "@std/async";
-import * as cli from "./client_messages.ts"
+import { delay } from "../_deps/std/async.ts";
+import type * as cli from "./client_messages.ts"
 import * as server from "./server_messages.ts"
-import * as nostr from "./nostr.ts"
+import type * as nostr from "./nostr.ts"
 import * as relay from "./relays.ts"
 import { blue } from "jsr:@std/fmt/colors"
 
@@ -240,7 +240,7 @@ export class Client {
     }
 
     #closed = false;
-    get closed() { return this.#closed }
+    get closed(): boolean { return this.#closed }
 
 
 
@@ -296,7 +296,7 @@ export class Client {
         await closed.promise
     }
 
-    async publish(event: nostr.Event) {
+    async publish(event: nostr.Event): Promise<PublishResult> {
         // TODO: if message is "large", and this relay supports NIP-45,
         // check if it already has the event before sending it.
 
@@ -332,7 +332,6 @@ export class Client {
         }
 
         return {
-            published: true,
             isDuplicate
         }    
     }
@@ -341,14 +340,14 @@ export class Client {
      * Like publish, but doesn't throw.
      * @returns true if an event was published without error.
      */
-    async tryPublish(event: nostr.Event) {
+    async tryPublish(event: nostr.Event): Promise<TryPublishResult> {
         let result = {
             published: false,
             isDuplicate: false,
             hadError: false,
         }
         try {
-            result = { ...await this.publish(event), hadError: false }
+            result = { ...await this.publish(event), hadError: false, published: true}
         } catch (_: unknown) {
             result.hadError = true
         }
@@ -458,7 +457,7 @@ export type QueriedMessage = server.Event | server.EOSE;
  */
 export class MultiClient {
 
-    static forClients(clients: Client[]) {
+    static forClients(clients: Client[]): MultiClient {
         return new MultiClient(clients)
     }
 
@@ -525,4 +524,13 @@ function shuffled<T>(arr: T[]) {
         [arr[i], arr[oi]] = [arr[oi], arr[i]]
     }
     return arr
+}
+
+export type PublishResult = {
+    isDuplicate: boolean
+}
+
+export type TryPublishResult = PublishResult & {
+    published: boolean
+    hadError: boolean
 }

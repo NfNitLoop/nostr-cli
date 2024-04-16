@@ -6,15 +6,15 @@
  */
 
 
-import { ArgumentValue, Command, Type, ValidationError } from "@cliffy/command"
+import { type ArgumentValue, Command, Type, ValidationError } from "./src/_deps/cliffy/command.ts"
 
-import { generateSecretKey, getPublicKey, nip05, nip19 } from "@nostr/tools"
+import { generateSecretKey, getPublicKey, nip05, nip19 } from "./src/_deps/nostr-tools.ts"
 import { Client } from "./src/nostr/client.ts"
-import * as cli from "./src/nostr/client_messages.ts"
+import type * as cli from "./src/nostr/client_messages.ts"
 import * as collect from "./src/collect.ts"
 import { EventObj } from "./src/nostr/nostr.ts";
 import { encodeHex } from "jsr:@std/encoding@^0.219.1/hex";
-import { EncodeOptions, encodeFile } from "./src/nostr/nip95.ts";
+import { type EncodeOptions, encodeFile } from "./src/nostr/nip95.ts";
 import * as blob from "./src/blob.ts"
 import { LocalSigner } from "./src/nostr/signer.ts";
 import { basename, extname } from "jsr:@std/path"

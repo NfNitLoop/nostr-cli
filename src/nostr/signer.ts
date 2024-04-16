@@ -1,6 +1,6 @@
-import { EventTemplate, finalizeEvent} from "@nostr/tools";
-import * as nostr from "./nostr.ts"
-import { decodeHex } from "@std/encoding/hex";
+import { type EventTemplate, finalizeEvent} from "../_deps/nostr-tools.ts";
+import type * as nostr from "./nostr.ts"
+import { decodeHex } from "../_deps/std/encoding/hex.ts";
 
 /**
  * Something that allows us to sign messages.

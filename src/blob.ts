@@ -17,7 +17,7 @@
 * ```
 */
 
-import { Reader, readAll } from "jsr:@std/io"
+import { type Reader, readAll } from "jsr:@std/io"
 import { toReadableStream } from "jsr:@std/io/to-readable-stream"
 
 export async function wrap(file: Deno.FsFile): Promise<Blob> {

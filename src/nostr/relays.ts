@@ -2,7 +2,7 @@
  * Metadata we can fetch from/about relays.
  */
 
-import { z } from "zod";
+import { z } from "../_deps/zod.ts";
 
 /**
  * Used to fetch information about a relay.

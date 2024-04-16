@@ -3,11 +3,11 @@
  * @module
  */
 
-import * as nostr from "./nostr.ts"
-import { crypto } from "@std/crypto"
-import {EventTemplate} from "@nostr/tools"
-import {encodeBase64} from "@std/encoding/base64"
-import { Signer } from "./signer.ts";
+import type * as nostr from "./nostr.ts"
+import { crypto } from "../_deps/std/crypto.ts"
+import type {EventTemplate} from "../_deps/nostr-tools.ts"
+import {encodeBase64} from "../_deps/std/encoding/base64.ts"
+import type { Signer } from "./signer.ts";
 import { Channel } from "../channel.ts";
 import { encodeHex } from "jsr:@std/encoding@^0.221.0/hex";
 

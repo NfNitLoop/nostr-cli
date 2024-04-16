@@ -6,7 +6,7 @@
  * @module
  */
 
-import { z } from "zod";
+import { z } from "../_deps/zod.ts";
 
 import {SubscriptionID} from "./client_messages.ts"
 import * as nostr from "./nostr.ts"

@@ -1,9 +1,9 @@
 import { assertEquals, assertLessOrEqual } from "jsr:@std/assert@^0.219.1";
-import {EVENT_OVERHEAD, EncodeOptions, encodeFile} from "./nip95.ts"
-import * as nostr from "./nostr.ts"
+import {EVENT_OVERHEAD, type EncodeOptions, encodeFile} from "./nip95.ts"
+import type * as nostr from "./nostr.ts"
 import { LocalSigner } from "./signer.ts";
-import {decodeBase64} from "@std/encoding/base64"
-import { lazy } from "@nfnitloop/better-iterators";
+import {decodeBase64} from "../_deps/std/encoding/base64.ts"
+import { lazy } from "../_deps/better-iterators.ts";
 
 
 Deno.test({

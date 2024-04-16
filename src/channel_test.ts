@@ -1,4 +1,4 @@
-import { delay } from "@std/async";
+import { delay } from "./_deps/std/async.ts";
 import { Channel } from "./channel.ts"
 
 
