@@ -80,7 +80,12 @@ async function parse_args(args: string[]) {
         .option("--debug", "enable debug logging", {default: false})
         .option("--config <file:string>", "The config file to load.", {default: "nt.toml"})
         .action(nt_upload)
-    
+
+    cmd.command("send <dest:string>")
+        .description("Send a single event to a relay")
+        .option("--debug", "enable debug logging", {default: true})
+        .option("--config <file:string>", "The config file to load.", {default: "nt.toml"})
+        .action(nt_send)
 
     await cmd.parse(args)
 
@@ -285,6 +290,23 @@ type CollectOptions = {
     limit?: number
     config: string
     debug: boolean
+}
+
+type SendArgs = {
+    debug: boolean
+}
+
+async function nt_send(args: SendArgs, dest: string) {
+    using client = Client.connect(normalizeWSS(dest))
+    if (args.debug) {
+        client.withDebugLogging()
+    }
+
+    const json = prompt("json? ")
+    const obj = JSON.parse(json!)
+
+    const result = await client.publish(obj as unknown as any)
+    console.log({result})
 }
 
 

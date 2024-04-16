@@ -213,7 +213,8 @@ export class Collector {
     async #copyProfileRefs() {
         const mc = MultiClient.forClients([...this.#fallbackClients()])
         const workers = lazy(this.#profilesToCopy).toAsync().map({
-            parallel: 5,
+            // TODO: relay.nostr.band doesn't seem to like simultaneous requests?
+            parallel: 1,
             mapper: async (chunk) => {
                 const profile = await mc.getProfile(chunk)
                 if (profile) {
