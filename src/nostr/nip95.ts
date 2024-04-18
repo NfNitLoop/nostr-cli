@@ -88,6 +88,11 @@ export async function * encodeFile(inputOpts: EncodeOptions): AsyncGenerator<nos
         content: description ?? ""
     });
 
+    const metaEventSize = JSON.stringify(metaEvent).length
+    if (metaEventSize > maxMessageSize) {
+        throw new Error(`Meta message (kind 1065) size ${metaEventSize} is larger than the configured maximum of ${maxMessageSize}.`)
+    }
+
     yield metaEvent
 
     for await (const chunk of blobChunks(file, blockSize)) {

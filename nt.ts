@@ -234,22 +234,23 @@ async function nt_upload(opts: UploadOptions, filePath: string) {
     const signer = new LocalSigner(profile.pubkey, profile.seckey)
 
     using file = await Deno.open(filePath)
-
-    const mimetype = mimeType(extname(filePath))
+    using client = Client.connect(profile.destination)
 
     const fileOpts: EncodeOptions = {
         file: await blob.wrap(file),
         fileName: basename(filePath),
         maxMessageSize: 128 * 1024, // TODO: Try asking the server for it, if user didn't specify.
         signer,
-        mimetype,
+        mimetype: mimeType(extname(filePath)),
     }
 
-    // dry-run:
+
     for await (const event of encodeFile(fileOpts)) {
-        console.log(JSON.stringify(event))
+        await client.publish(event)
+        console.log("published", event.id, "kind:", event.kind)
     }
 
+    console.log("Done.")
 }
 
 function normalizeWSS(url: string): string {
