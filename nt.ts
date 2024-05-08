@@ -59,6 +59,7 @@ async function parse_args(args: string[]) {
         .option("--kinds <kinds:number[]>", "Which event kinds to query")
         .option("--ids <ids:pubkey[]>", "Which event kinds to query")
         .option("--authors <authors:pubkey[]>", "Limit results to these authors.")
+        .option("--count", "Instead of querying messages, just get their count.", {default: false})
         .action(nt_query)
 
     cmd.command("collect <profileName:string>")
@@ -248,14 +249,23 @@ type FilterOptions = {
     limit?: number
 }
 
-type QueryOptions = FilterOptions & GlobalOptions 
+type QueryOptions = FilterOptions & GlobalOptions & {
+    count: boolean
+}
 
 async function nt_query(opts: QueryOptions, wssURL: string) {
     using client = Client.connect(normalizeWSS(wssURL))
+    
     if (opts.debug) {
         client.withDebugLogging()
     }
     const filter = filter_from(opts)
+
+    if (opts.count) {
+        const count = await client.queryCount(filter)
+        console.log(count.count)
+        return
+    }
     
     for await (const event of client.querySaved(filter)) {
         console.log("")

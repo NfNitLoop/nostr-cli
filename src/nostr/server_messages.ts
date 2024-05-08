@@ -28,12 +28,16 @@ export const OK = z.tuple([
     ServerMessage,
 ])
 
+export type CountData = z.infer<typeof CountData>
+export const CountData = z.object({
+    count: z.number().int().nonnegative(),
+})
+
 export type Count = z.infer<typeof Count>
 export const Count = z.tuple([
     z.literal("COUNT"),
     SubscriptionID,
-    z.number().int().nonnegative(),
-    ServerMessage,
+    CountData,
 ])
 
 export type Closed = z.infer<typeof Closed>

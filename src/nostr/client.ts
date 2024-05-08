@@ -247,7 +247,8 @@ export class Client {
         for await (const msg of chan) {
             const [msgType] = msg;
             if (msgType == "COUNT") {
-                const [_, _subId, count] = msg;
+                const [_, _subId, data] = msg;
+                const {count} = data
                 return {count}
             }
         }
@@ -310,6 +311,7 @@ export class Client {
         } catch (err: unknown) {
             console.error("Error processing data:", e.data)
             console.error(err)
+            this.close()
             return
         }
 
