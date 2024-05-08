@@ -2,6 +2,15 @@ import { z } from "../_deps/zod.ts";
 import { yellow, gray } from "../_deps/std/fmt/colors.ts";
 import * as ntools from "../_deps/nostr-tools.ts"
 import {decodeHex} from "../_deps/std/encoding/hex.ts"
+import { format as formatBytes } from "jsr:@std/fmt/bytes";
+
+export const KINDS = {
+    k0_user_profile: 0,
+    k1_note: 1,
+    k3_user_follows: 3,
+    k1064_file_blob: 1064,
+    k1065_file_meta: 1065,
+} as const
 
 
 
@@ -51,6 +60,38 @@ export class EventObj {
         return decodeHex(this.id)
     }
 
+    // Common on NIP-95 (kind 1065) file metadata:
+    get mimeType(): string|null { return this.singleTag("m") }
+    get fileName(): string|null { return this.singleTag("fileName") }
+    get alt(): string|null { return this.singleTag("alt") }
+    /** File content hash (tag "x") */
+    get haxh(): string|null { return this.singleTag("x") }
+
+    /** File size in bytes. */
+    get size(): number|null { return this.singleTagInt("size") }
+    get blockSize(): number|null { return this.singleTagInt("blockSize") }
+    get numBlocks(): number|null {
+        const size = this.size
+        const blockSize = this.blockSize
+        if (!size || !blockSize) { return null }
+
+        return Math.ceil(size / blockSize)
+    }
+
+    get readableSize(): string|null { 
+        const size = this.size
+        if (size == null) return null
+        return formatBytes(size, {binary: true})
+    }
+    get readableBlockSize(): string|null {
+        const size = this.blockSize
+        if (size == null) return null
+        return formatBytes(size, {binary: true})
+    }
+
+    get readableId(): string { return ntools.nip19.noteEncode(this.id) }
+    get readablePubKey(): string { return ntools.nip19.npubEncode(this.pubkey) }
+
     toString(): string {
         if (this.kind == 0) {
             return [
@@ -69,8 +110,8 @@ export class EventObj {
     get header(): string {
         return [
             `kind: ${this.kind}`,
-            `id:   ${ntools.nip19.noteEncode(this.id)} ${gray(this.id)}`,
-            `pub:  ${ntools.nip19.npubEncode(this.pubkey)} ${gray(this.pubkey)}`,
+            `id:   ${this.readableId} ${gray(this.id)}`,
+            `pub:  ${this.readablePubKey} ${gray(this.pubkey)}`,
             `sig:  ${this.sig}`,
             `created_at: ${this.created_at} (${this.humanDate})`,
             `tags: \n${this.tags?.map(t => JSON.stringify(t)).join("\n")}`,
@@ -83,6 +124,44 @@ export class EventObj {
 
     validate(): boolean {
         return ntools.validateEvent(this.event)
+    }
+
+    /** Get a tag we expect to only have one value of. Throws if multiple values are found. */
+    singleTag(name: string): string|null {
+        const matching = this.tags.filter(it => it[0] == name)
+        if (matching.length > 1) {
+            throw new Error(`Expected to find 1 tag named ${name} but found ${matching.length}`)
+        }
+        return matching[0]?.[1] ?? null
+    }
+
+    /** Like singleTag but parses it as an integer */
+    singleTagInt(name: string): number|null {
+        const value = this.singleTag(name)
+        if (value === null) { return null }
+        return Number.parseInt(value)
+    }
+
+    /** Format this event to read it as a kind 1065 file info */
+    showKind1065(): void {
+        const info: Record<string,string|number|null> = {
+            fileName: this.fileName,
+            size: `${this.readableSize}`,
+            mimeType: this.mimeType,
+            id: `${this.readableId}`,
+            hexId: this.id,
+            createdAt: `${this.created_at} (${this.humanDate})`,
+        }
+
+        if (this.blockSize) {
+            info.blockSize = this.readableBlockSize
+            info.numBlocks = this.numBlocks
+        }
+        
+        for (const [key, value] of Object.entries(info)) {
+            if (value === null) { continue }
+            console.log(`${key}:`, value)
+        }
     }
 }
 

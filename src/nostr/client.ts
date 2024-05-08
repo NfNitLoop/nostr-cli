@@ -42,6 +42,36 @@ export class Client {
         const json = await res.json()
         return relay.Info.passthrough().parse(json)
     }
+
+    #cachedInfo: Promise<relay.Info|null> | null = null
+    #info(): Promise<relay.Info|null> {
+        if (!this.#cachedInfo) {
+            this.#cachedInfo = (async () => {
+                try {
+                    return await Client.fetchInfo(this.url)
+                } catch (_e: unknown) {
+                    // TODO: Debug error?
+                    return null
+                }
+            })()
+        }
+
+        return this.#cachedInfo
+    }
+
+    async #supportsCount(): Promise<boolean|null> {
+        const info = await this.#info()
+        if (!info) { return null; }
+        const nips = info.supported_nips ?? []
+        return nips.includes(45)
+    }
+
+    async hasEvent(id: nostr.EventID): Promise<boolean|null> {
+        if (!await this.#supportsCount()) return null;
+
+        const {count} = await this.queryCount({ids: [id]})
+        return count > 0
+    }
   
     private constructor(readonly url: string, opts: ClientOpts, ws: WebSocket) {
         this.#listeners = opts?.listeners ?? []
@@ -117,7 +147,7 @@ export class Client {
     async * querySaved(filter: cli.Filter): AsyncGenerator<nostr.Event> {
         const requestedLimit = filter.limit ?? Number.MAX_SAFE_INTEGER
         let eventCount = 0
-        let lastEventTime = Date.now()
+        let earliestEvent = Date.now() + 1000 * 60 * 10 // 10 min in the future, to allow for drift.
 
         let batchCount = 0
         for await (const msg of this.query(filter)) {
@@ -132,7 +162,7 @@ export class Client {
             const [_msgType, _subId, event] = msg
             batchCount += 1
             eventCount += 1
-            lastEventTime = event.created_at
+            earliestEvent = Math.min(event.created_at, earliestEvent)
             if (eventCount > requestedLimit) {
                 console.warn("Received more events than requested:", batchCount)
                 return
@@ -149,7 +179,7 @@ export class Client {
         // Keep querying until we get back an empty batch. (or throtteld by the server.)
         while (batchCount > 1 && eventCount < requestedLimit) {
                         batchCount = 0
-            const batchFilter: cli.Filter = {...filter, until: lastEventTime - 1}
+            const batchFilter: cli.Filter = {...filter, until: earliestEvent - 1}
 
             inner: for await (const msg of this.query(batchFilter)) {
                 const [msgType] = msg
@@ -163,7 +193,7 @@ export class Client {
                 const [_msgType, _subId, event] = msg
                 batchCount += 1
                 eventCount += 1
-                lastEventTime = event.created_at
+                earliestEvent = event.created_at
                 if (eventCount > requestedLimit) {
                     console.warn("Received more events than requested:", batchCount)
                     return
@@ -203,6 +233,27 @@ export class Client {
             }
             yield msg
         }
+    }
+
+    /** Query for the count of events matching a filter. */
+    async queryCount(filter: cli.Filter, ...moreFilters: cli.Filter[]): Promise<Count> {
+        using chan = new Channel<server.Message>
+        using sub = this.#newSub()
+        sub.addHandler(m => chan.send(m))
+        sub.awaitClosed().then(() => chan.close())
+
+        this.#send(["COUNT", sub.id, filter, ...moreFilters])
+
+        for await (const msg of chan) {
+            const [msgType] = msg;
+            if (msgType == "COUNT") {
+                const [_, _subId, count] = msg;
+                return {count}
+            }
+        }
+
+        // else:
+        throw new Error(`Server ${this.url} closed COUNT subscription without a response.`)
     }
 
     async #send(r: cli.Message) {
@@ -262,10 +313,15 @@ export class Client {
             return
         }
 
+        const [messageType] = message
+        if (messageType == "NOTICE") {
+            console.warn("NOTICE message from", this.url, message)
+        }
+
         const subID = server.subscriptionId(message)
         const sub = subID ? this.#subs.get(subID) : null
         if (sub) {
-            if (message[0] == "CLOSED") {
+            if (messageType == "CLOSED") {
                 // The server closed the subscription. Remove it now.
                 this.#subs.delete(sub.id)
             }
@@ -369,6 +425,14 @@ export class Client {
             kinds: [3],
         })
     }
+}
+
+/**
+ * The result of the {@link Cliet#countResult} method.
+ */
+export type Count = {
+    count: number,
+    // TODO: isApproximate?: boolean
 }
 
 type MessageHandler = (m: server.Message) => void

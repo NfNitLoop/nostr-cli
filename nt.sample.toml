@@ -21,7 +21,7 @@ destination = "ws://127.0.0.1:8095"
 
 # If we can't find a user's list of preferred relays, we'll try finding them on one of these relays.
 # If we still can't find their preferred relays, we'll just look for their posts on these relays.
-fallbackRelays = "popular"
+sourceRelays = "popular"
 
 [profiles.foo]
 

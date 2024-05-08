@@ -36,6 +36,12 @@ export const Req = z.tuple([
     Filter,
 ]).rest(Filter)
 
+export type Count = z.infer<typeof Count>
+export const Count = z.tuple([
+    z.literal("COUNT"),
+    SubscriptionID,
+    Filter,
+]).rest(Filter)
 
 export type Close = z.infer<typeof Close>
 export const Close = z.tuple([
@@ -52,6 +58,7 @@ export const Event = z.tuple([
 export type Message = z.infer<typeof Message>
 export const Message = z.union([
     Req,
+    Count,
     Close,
     Event,
 ])

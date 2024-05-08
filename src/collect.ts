@@ -3,103 +3,12 @@
  * @module
  */
 
-import { z } from "./_deps/zod.ts";
-import * as toml from "jsr:@std/toml"
 import type * as nostr from "./nostr/nostr.ts"
 import { Client, MultiClient } from "./nostr/client.ts"
 import { lazy } from "./_deps/better-iterators.ts"
+import type { ConfigProfile } from "./config.ts";
+import { KINDS } from "./nostr/nostr.ts";
 
-// I Guess this config isn't only used for `nt collect` anymore.
-// TODO: Move it somewhere else?
-export async function loadConfig(filePath: string): Promise<Map<string,ConfigProfile>> {
-    const fileData = await Deno.readFile(filePath)
-    const json = toml.parse(decodeUtf8.decode(fileData))
-    const config = Config.parse(json)
-
-    const relaySets = config.relaySets ?? {}
-    const checkRelaySetName = (name?: string) => {
-        if (!name) { return }
-        if (!(name in relaySets)) {
-            throw new Error(`no such relay set name: "${name}"`)
-        }
-    }
-    checkRelaySetName(config.default.fallbackRelays)
-
-    const profiles = new Map<string, ConfigProfile>()
-    for (const p in config.profiles) {
-        const prof = config.profiles[p]
-        checkRelaySetName(prof.fallbackRelays)
-        const merged = {
-            ...config.default,
-            ...prof,
-        }
-        let fallbackRelays: undefined|RelaySet = undefined
-        if (merged.fallbackRelays) {
-            fallbackRelays = config.relaySets?.[merged.fallbackRelays]
-        }
-        profiles.set(p, ConfigProfile.parse({
-            ...merged,
-            fallbackRelays
-        }))
-    }
-
-    return profiles
-
-}
-
-const decodeUtf8 = new TextDecoder()
-
-const WSURL = z.string().url()
-const DefaultTrue = z.boolean().optional().default(true)
-
-export type Defaults = z.infer<typeof Defaults>
-const Defaults = z.object({
-    destination: WSURL.optional(),
-    fetchMine: DefaultTrue,
-    fetchFollows: DefaultTrue,
-    fetchMyRefs: DefaultTrue,
-    fetchFollowsRefs: DefaultTrue,
-    fallbackRelays: z.string().min(1).optional(),
-})
-
-export type Profile = z.infer<typeof Profile>
-const Profile = z.object({
-    pubkey: z.string().length(64).regex(/[0-9a-f]/g),
-    seckey: z.string().length(64).regex(/[0-9a-f]/g).optional(),
-    destination: WSURL.optional(),
-    fetchMine: z.boolean().optional(),
-    fetchFollows: z.boolean().optional(),
-    fetchMyRefs: z.boolean().optional(),
-    fetchFollowsRefs: z.boolean().optional(),
-    fallbackRelays: z.string().min(1).optional(),
-})
-
-export type RelaySet = z.infer<typeof RelaySet>
-const RelaySet = z.object({
-    relays: WSURL.array()
-})
-
-
-// After we fill in defaults, profiles should pass:
-export type ConfigProfile = z.infer<typeof ConfigProfile>
-const ConfigProfile = Profile.merge(z.object({
-    destination: WSURL,
-    fetchMine: z.boolean(),
-    fetchFollows: z.boolean(),
-    fetchMyRefs: z.boolean(),
-    fetchFollowsRefs: z.boolean(),
-    fallbackRelays: RelaySet.optional()
-}))
-
-
-
-
-export type Config = z.infer<typeof Config>
-export const Config = z.object({
-    default: Defaults,
-    profiles: z.record(z.string().min(1), Profile),
-    relaySets: z.record(z.string().min(1), RelaySet).optional(),
-})
 
 export type Options = {
     profile: ConfigProfile,
@@ -132,13 +41,15 @@ export class Collector {
         // Copy follows, because it may grant more permissions on the server:
         await this.#copyFollows(this.profile.pubkey)
 
+        // TODO: Copy users' preferred relays.
+
         // Copy my events: (might include updates to follows)
         await this.#copyUserEvents(this.profile.pubkey, this.#limit)
 
         // Find out who I follow:
         const followEvent = await this.#dest.queryOne({
             authors: [this.profile.pubkey],
-            kinds: [3], // user follows.
+            kinds: [KINDS.k3_user_follows],
         })
         const follows = extractFollows(followEvent);
         log.info("found follows:", follows)
@@ -153,6 +64,8 @@ export class Collector {
 
     async #copyUserEvents(pubkey: string, limit: number) {
         log.info("Copying up to", limit, "events for", pubkey)
+
+        // TODO: Move this to multiClient and let it dedupe event IDs from multiple upstreams.
         for (const client of this.#profileSources(pubkey)) {
             const events = await client.querySimple({
                 authors: [pubkey],
@@ -172,6 +85,7 @@ export class Collector {
     #profilesToCopy = new Set<string>()
     // TODO: "a" tag for replaceable events?
 
+    // Save references to profiles & other events we should copy for context.
     #saveRefs(event: nostr.Event) {
         const events = event.tags?.filter(t => t[0] == "e")?.map(t => t[1])
         events?.forEach(r => this.#eventsToCopy.add(r))
@@ -182,7 +96,7 @@ export class Collector {
         this.#profilesToCopy.add(event.pubkey)
     }
 
-    /** Copy events that are referred to by this one. */
+    /** Copy events that were referred to by events in this copy. */
     async #copyEventRefs() {
         // Limited by the size of the REQ that servers will let us send:
         const chunkSize = 50
@@ -192,8 +106,12 @@ export class Collector {
         const workers = lazy(this.#eventsToCopy).chunked(chunkSize).toAsync().map({
             parallel: 3,
             mapper: async (chunk) => {
-                // TODO: warn about events we couldn't find?
                 const events = await mc.getEvents(chunk)
+                const missingEvents = chunk.filter(it => !events.has(it))
+                for (const missing of missingEvents) {
+                    console.warn("Skipping event ID we couldn't find:", missing)
+                }
+
                 for (const event of events.values()) {
                     const ok = await this.#tryPublish(event)
                     if (ok) {
@@ -204,6 +122,7 @@ export class Collector {
             }
         })
 
+        // TODO: There should be a method on LazyAsync to do this.
         for await (const _result of workers) {
             // Wait for everything to do its thing.
         }
@@ -215,8 +134,8 @@ export class Collector {
         const workers = lazy(this.#profilesToCopy).toAsync().map({
             // TODO: relay.nostr.band doesn't seem to like simultaneous requests?
             parallel: 1,
-            mapper: async (chunk) => {
-                const profile = await mc.getProfile(chunk)
+            mapper: async (pubkey) => {
+                const profile = await mc.getProfile(pubkey)
                 if (profile) {
                     await this.#tryPublish(profile)
                 }
@@ -261,9 +180,10 @@ export class Collector {
         }
     }
 
+    // Returns OK if the event was published and not a duplicate.
     async #tryPublish(event: nostr.Event): Promise<boolean> {
         if (this.#copiedEvents.has(event.id)) {
-            return false
+            return false // avoid duplicates
         }
 
         // Adding before we actually do the copy, to avoid race condition / stampede.
@@ -272,7 +192,7 @@ export class Collector {
         
         const ok = published && !isDuplicate
         if (ok) {
-            log.info("copied", event.id)
+            log.info("copied", event.id, `(kind ${event.kind})`)
         }
         return ok
     }
@@ -285,6 +205,7 @@ export class Collector {
 
     #clients = new Map<string, Client>()
 
+    // TODO: Move to MultiClient
     /** get a cached client. Returns null if it has already closed its connection. */
     #getClient(url: string): Client|null {
         let client = this.#clients.get(url);
@@ -316,7 +237,7 @@ export class Collector {
     // Actually we need this for fetching an event w/ unknown pubkey.
     * #fallbackClients(): Generator<Client> {
         // return this.#relays.map(url => this.#getClient(url)).filter(notNull)
-        const relays = (this.profile?.fallbackRelays?.relays ?? [])
+        const relays = (this.profile?.sourceRelays?.relays ?? [])
         for (const url of relays) {
             const client = this.#getClient(url)
             if (!client) { continue }
@@ -330,34 +251,9 @@ export class Collector {
         yield * this.#fallbackClients()
     }
 
-    * #allClients(): Generator<Client> {
-        yield this.#dest
-        yield * this.#fallbackClients()
-    }
-
     #profiles = new Map<string, nostr.Event|null>()
 
-    async #getProfile(key: string): Promise<nostr.Event|null> {
-        const profile = this.#profiles.get(key)
-        if (profile || profile === null) {
-            return profile
-        }
 
-        // TODO: This implementation can end up racing the DB to fetch.
-        // Use a proper cache + fetcher.
-
-        for (const client of this.#allClients()) {
-            const profile = await client.getProfile(key)
-            if (profile) {
-                this.#profiles.set(key, profile)
-                return profile
-            }
-        }
-
-        return null
-
-
-    }
 
     close() {
         this.#clients.forEach(c => c.close())

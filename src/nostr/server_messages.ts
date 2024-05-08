@@ -28,6 +28,14 @@ export const OK = z.tuple([
     ServerMessage,
 ])
 
+export type Count = z.infer<typeof Count>
+export const Count = z.tuple([
+    z.literal("COUNT"),
+    SubscriptionID,
+    z.number().int().nonnegative(),
+    ServerMessage,
+])
+
 export type Closed = z.infer<typeof Closed>
 export const Closed = z.tuple([
     z.literal("CLOSED"),
@@ -52,6 +60,7 @@ export const EOSE = z.tuple([
 export type Message =  z.infer<typeof Message> 
 export const Message = z.union([
     Event,
+    Count,
     OK,
     Closed,
     Notice,

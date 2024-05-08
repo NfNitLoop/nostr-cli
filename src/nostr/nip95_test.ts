@@ -22,7 +22,7 @@ const exampleMessage = {
     sig: "82a4a84ca26e47fb041606f6e6baba3dc5c82a74bc9921a70c909c52067e535182a4a84ca26e47fb041606f6e6baba3dc5c82a74bc9921a70c909c52067e5351",
     kind: 1064, // or 1065,
     created_at: Math.floor(Date.now() / 1000),
-    tags: [],
+    tags: [], // TODO: This might not be required?
     content: ""
 }
 

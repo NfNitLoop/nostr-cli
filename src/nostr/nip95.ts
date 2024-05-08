@@ -10,6 +10,7 @@ import {encodeBase64} from "../_deps/std/encoding/base64.ts"
 import type { Signer } from "./signer.ts";
 import { Channel } from "../channel.ts";
 import { encodeHex } from "jsr:@std/encoding@^0.221.0/hex";
+import { KINDS } from "./nostr.ts";
 
 
 /**
@@ -18,6 +19,9 @@ import { encodeHex } from "jsr:@std/encoding@^0.221.0/hex";
  * The first message will be kind 1065, the metadata message about
  * the file. You should send this to a server first to see if it will
  * accept your upload. If not, you should not send more messages.
+ * 
+ * The following messages will be all of the kind 1064 parts that
+ * contain the file's contents.
  */
 export async function * encodeFile(inputOpts: EncodeOptions): AsyncGenerator<nostr.Event> {
     const mimetype = inputOpts.mimetype
@@ -61,7 +65,7 @@ export async function * encodeFile(inputOpts: EncodeOptions): AsyncGenerator<nos
     }
     
     const tags = [
-        ["name", fileName],
+        ["name", fileName], // TODO: What's the difference between "name" and "fileName"?
         ["m", mimetype],
         ["x", await hasher.finalizeHex()],
         ["fileName", fileName],
@@ -82,7 +86,7 @@ export async function * encodeFile(inputOpts: EncodeOptions): AsyncGenerator<nos
     }
 
     const metaEvent = await signer.sign({
-        kind: kinds.metadata,
+        kind: KINDS.k1065_file_meta,
         created_at: createdAt,
         tags,
         content: description ?? ""
@@ -156,10 +160,6 @@ type ChunkOptions =  {
 // TODO
 export type Signature = string;
 
-const kinds = {
-    contents: 1064,
-    metadata: 1065,
-} as const
 
 
 
@@ -179,7 +179,7 @@ async function * blobChunks(blob: Blob, blockSize: number): AsyncGenerator<Uint8
 async function signChunk(chunk: Uint8Array, {signer, createdAt}: ChunkOptions): Promise<nostr.Event> {
     const event: EventTemplate = {
         tags: [],
-        kind: kinds.contents,
+        kind: KINDS.k1064_file_blob,
         created_at: createdAt,
         content: encodeBase64(chunk)
     }
@@ -214,6 +214,4 @@ class Hasher {
 
     [Symbol.dispose]() { this.#close() }
     [Symbol.asyncDispose]() { this.#close() }
-
-    
 }
