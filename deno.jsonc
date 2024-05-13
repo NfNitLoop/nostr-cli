@@ -8,13 +8,19 @@
     "check": "deno task check-types && deno lint && deno task check-publish",
     "check-types": "deno check nt.ts",
     "check-publish": "deno publish --dry-run --allow-slow-types --allow-dirty",
-    
+
     // See: https://github.com/denoland/deno/issues/23126
     "publish": "deno publish --allow-slow-types",
   },
   "exports": {
-    ".": "./src/nostr/client.ts",
-    "./nt": "./nt.ts"
+    // Installing from here is preferable:
+    "./nt": "./nt.ts",
+    // ... but you can install from the root, too.
+    ".": "./nt.ts",
+
+    // UNSTABLE: client & types for re-use elsewhere. (Maybe seprate these out into their own package?)
+    "./client": "./src/nostr/client.ts",
+    "./nostr": "./src/nostr/nostr.ts",
   },
   "lint": {
     "include": [
@@ -36,7 +42,8 @@
     "include": [
       "README.md",
       "src/**/*",
-      "nt.ts"
+      "nt.ts",
+      "deno.*",
     ]
   }
 }
