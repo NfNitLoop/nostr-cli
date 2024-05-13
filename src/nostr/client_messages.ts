@@ -21,7 +21,7 @@ export const EventID = z.string().min(1)
 export type Filter = z.infer<typeof Filter>
 export const Filter = z.object({
     ids: z.array(EventID).optional(),
-    authors: PubKey.array().optional(),
+    authors: PubKey.array().readonly().optional(),
     kinds: z.number().int().array().optional(),
     since: Timestamp.optional(),
     until: Timestamp.optional(),

@@ -10,6 +10,13 @@ export const KINDS = {
     k3_user_follows: 3,
     k1064_file_blob: 1064,
     k1065_file_meta: 1065,
+
+    /**
+     * Replaceable markdown long-form content.
+     * 
+     * See: <https://github.com/nostr-protocol/nips/blob/master/23.md>
+     */
+    k30023_long_form_text: 30023,
 } as const
 
 
@@ -32,15 +39,19 @@ export const Tag = z.tuple([
     z.string().min(1),
 ]).rest(z.string())
 
-export type Event = z.infer<typeof Event>
-export const Event = z.object({
-    id: EventID,
-    pubkey: PubKey,
-    sig: Signature,
+export type UnsignedEvent = z.infer<typeof UnsignedEvent>
+export const UnsignedEvent = z.object({
     created_at: Timestamp,
     kind: z.number().int(),
     tags: Tag.array(),
     content: z.string(),
+}).strict()
+
+export type Event = z.infer<typeof Event>
+export const Event = UnsignedEvent.extend({
+    id: EventID,
+    pubkey: PubKey,
+    sig: Signature,
 }).strict()
 
 /** Wrapper with helpful methods on events */
