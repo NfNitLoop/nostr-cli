@@ -4,10 +4,13 @@
   "tasks": {
     "dev": "deno run --check --allow-net --watch main.ts",
     "nt": "deno run --check --allow-net nt.ts",
-    "test": "deno task check && deno test && deno task publish-dry-run",
-    "check": "deno task check-types && deno task check-publish",
+    "test": "deno task check && deno test",
+    "check": "deno task check-types && deno lint && deno task check-publish",
     "check-types": "deno check nt.ts",
-    "check-publish": "deno publish --dry-run --allow-slow-types --allow-dirty"
+    "check-publish": "deno publish --dry-run --allow-slow-types --allow-dirty",
+    
+    // See: https://github.com/denoland/deno/issues/23126
+    "publish": "deno publish --allow-slow-types",
   },
   "exports": {
     ".": "./src/nostr/client.ts",

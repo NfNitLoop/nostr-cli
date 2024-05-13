@@ -129,27 +129,6 @@ function addHelp<
         })
 }
 
-// TODO: Not sure how to get the return type correct here. Yikes.
-function addFilters<
-    TParentCommandGlobals extends Record<string, unknown> | void,
-    TParentCommandTypes extends Record<string, unknown> | void,
-    TCommandOptions extends Record<string, unknown> | void,
-    TCommandArguments extends Array<unknown>,
-    TCommandGlobals extends Record<string, unknown> | void,
-    TCommandTypes extends Record<string, unknown> | void,
-    TCommandGlobalTypes extends Record<string, unknown> | void,
-    // deno-lint-ignore no-explicit-any -- matching Command's type here.
-    TParentCommand extends Command<any> | undefined,
-    C extends Command<TParentCommandGlobals, TParentCommandTypes, TCommandOptions, TCommandArguments, TCommandGlobals, TCommandTypes, TCommandGlobalTypes, TParentCommand>,
-    COut extends Command<TParentCommandGlobals, TParentCommandTypes, TCommandOptions, TCommandArguments, TCommandGlobals, TCommandTypes, TCommandGlobalTypes, TParentCommand>
-
->(cmd: C) {
-    return cmd.option("--limit <max:number>", "Limit the number of events to query")
-    .option("--kinds <kinds:number[]>", "Which event kinds to query")
-    .option("--ids <ids:pubkey[]>", "Which event kinds to query")
-    .option("--authors <authors:pubkey[]>", "Limit results to these authors.")
-}
-
 class PubKeyType extends Type<string> {
 
     private static PAT = /^[0-9a-f]{64}$/ // 32 bytes as hex
