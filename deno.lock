@@ -7,6 +7,7 @@
       "jsr:@cliffy/table@1.0.0-rc.4": "jsr:@cliffy/table@1.0.0-rc.4",
       "jsr:@nfnitloop/better-iterators@1.5.0": "jsr:@nfnitloop/better-iterators@1.5.0",
       "jsr:@nick/dispose": "jsr:@nick/dispose@1.1.0",
+      "jsr:@nick/dispose@1": "jsr:@nick/dispose@1.1.0",
       "jsr:@nostr/tools@2.3.1": "jsr:@nostr/tools@2.3.1",
       "jsr:@std/assert@^0.219.1": "jsr:@std/assert@0.219.1",
       "jsr:@std/assert@^0.221.0": "jsr:@std/assert@0.221.0",

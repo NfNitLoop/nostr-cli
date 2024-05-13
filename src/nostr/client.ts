@@ -6,7 +6,7 @@ import * as relay from "./relays.ts"
 import { blue } from "jsr:@std/fmt/colors"
 
 
-import { DisposableStack as DS } from "jsr:@nick/dispose";
+import { DisposableStack as DS } from "jsr:@nick/dispose@1";
 import { Future } from "../future.ts";
 import { Channel } from "../channel.ts";
 
