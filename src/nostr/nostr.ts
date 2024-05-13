@@ -2,7 +2,7 @@ import { z } from "../_deps/zod.ts";
 import { yellow, gray } from "../_deps/std/fmt/colors.ts";
 import * as ntools from "../_deps/nostr-tools.ts"
 import {decodeHex} from "../_deps/std/encoding/hex.ts"
-import { format as formatBytes } from "jsr:@std/fmt/bytes";
+import { format as formatBytes } from "../_deps/std/fmt/bytes.ts"
 
 export const KINDS = {
     k0_user_profile: 0,
