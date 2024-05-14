@@ -17,8 +17,8 @@ import { encodeHex } from "jsr:@std/encoding@^0.219.1/hex";
 import { type EncodeOptions, encodeFile } from "./src/nostr/nip95.ts";
 import * as blob from "./src/blob.ts"
 import { LocalSigner } from "./src/nostr/signer.ts";
-import { basename, extname } from "jsr:@std/path"
-import { contentType as mimeType } from "jsr:@std/media-types/content-type";
+import { basename, extname } from "./src/_deps/std/path.ts"
+import { contentType as mimeType } from "./src/_deps/std/media-types.ts";
 import { DEFAULT_CONFIG, loadConfig } from "./src/config.ts";
 
 async function main() {

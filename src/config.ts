@@ -4,8 +4,8 @@
  * @module
  */
 
-import * as toml from "jsr:@std/toml"
-import { z } from "./_deps/zod.ts";
+import * as toml from "./_deps/std/toml.ts"
+import { z } from "./_deps/zod.ts"
 
 export const DEFAULT_CONFIG = "nt.toml"
 

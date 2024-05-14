@@ -3,7 +3,7 @@ import type * as cli from "./client_messages.ts"
 import * as server from "./server_messages.ts"
 import type * as nostr from "./nostr.ts"
 import * as relay from "./relays.ts"
-import { blue } from "jsr:@std/fmt/colors"
+import { blue } from "../_deps/std/fmt/colors.ts"
 
 
 import { DisposableStack as DS } from "jsr:@nick/dispose@1";
